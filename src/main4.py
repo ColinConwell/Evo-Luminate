@@ -6,6 +6,7 @@ import logging
 import numpy as np
 from enum import Enum
 import torch
+from datetime import datetime
 from typing import List, Dict, Any, Optional, Union
 
 from population import Population
@@ -13,28 +14,15 @@ from evolution4 import generate_evolve_ideas
 from artifacts import Artifact, ShaderArtifact
 
 # Global LLM client
-from models import llm_client, text_embedder, image_embedder
+# from models import llm_client, text_embedder, image_embedder
 
 
 def compute_embeddings(artifacts: List[Artifact]) -> torch.Tensor:
     """Compute embeddings for a list of artifacts"""
-    if not artifacts:
-        return torch.tensor([])
-
     embeddings = []
-
     for artifact in artifacts:
-        if artifact.embedding is not None:
-            embeddings.append(artifact.embedding)
-            continue
-        # try:
-        if artifact.phenome:
-            embedding = image_embedder.embedImage(artifact.phenome)
-        else:
-            embedding = text_embedder.encodeText(artifact.genome)
-        artifact.embedding = embedding
+        embedding = artifact.compute_embedding()
         embeddings.append(embedding)
-    # Stack embeddings into a single tensor
     return torch.stack(embeddings)
 
 
@@ -75,21 +63,31 @@ def run_evolution_experiment(
     np.random.seed(config["random_seed"])
     torch.manual_seed(config["random_seed"])
 
-    # Create output directory
     os.makedirs(output_dir, exist_ok=True)
 
+    # Save configuration
+    config_path = os.path.join(output_dir, "config.json")
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
+
+    # Save the initial prompt
+    prompt_path = os.path.join(output_dir, "prompt.txt")
+    with open(prompt_path, "w") as f:
+        f.write(initial_prompt)
+
     # Setup logging
-    # log_path = os.path.join(output_dir, "experiment.log")
-    # logging.basicConfig(
-    #     filename=log_path,
-    #     level=logging.INFO,
-    #     format="%(asctime)s [%(levelname)s] %(message)s",
-    #     filemode="w",
-    # )
+    log_path = os.path.join(output_dir, "experiment.log")
+    logging.basicConfig(
+        filename=log_path,
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        filemode="w",
+    )
 
     # Log experiment start
     logging.info("Starting evolution experiment")
     logging.info("Initial prompt: %s", initial_prompt)
+    logging.info("Output directory: %s", output_dir)
 
     # Create initial population directory
     initial_dir = os.path.join(output_dir, "initial")
@@ -216,9 +214,13 @@ def run_evolution_experiment(
 
 
 if __name__ == "__main__":
+    # Create a timestamped directory for this run
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = os.path.join("results", f"run_{timestamp}")
+
     run_evolution_experiment(
-        "Create a colorful abstract shader with flowing patterns",
-        "results",
+        "Create an interesting shader",
+        output_dir=output_dir,
         config={
             "initial_population_size": 10,
             "population_size": 10,

@@ -19,11 +19,11 @@ from utils import extractCode
 defaultModel = "openai:gpt-4o-mini"
 
 
-class PhenotypeFormat(Enum):
-    """Enum defining the format of an artifact's phenotype"""
+# class PhenotypeFormat(Enum):
+#     """Enum defining the format of an artifact's phenotype"""
 
-    TEXT = "text"
-    IMAGE = "image"
+#     TEXT = "text"
+#     IMAGE = "image"
 
 
 class Artifact:
@@ -40,10 +40,10 @@ class Artifact:
         self.creation_time = time.time()
         self.metadata = {}
 
-    @property
-    def phenotype_format(self) -> PhenotypeFormat:
-        """Returns the format of this artifact's phenotype"""
-        raise NotImplementedError("Subclasses must implement this")
+    # @property
+    # def phenotype_format(self) -> PhenotypeFormat:
+    #     """Returns the format of this artifact's phenotype"""
+    #     raise NotImplementedError("Subclasses must implement this")
 
     @classmethod
     def create_random(cls, prompt: str, output_dir: str, **kwargs):
@@ -117,9 +117,9 @@ class ShaderArtifact(Artifact):
 	uniform float time;
     """
 
-    @property
-    def phenotype_format(self) -> PhenotypeFormat:
-        return PhenotypeFormat.IMAGE
+    # @property
+    # def phenotype_format(self) -> PhenotypeFormat:
+    #     return PhenotypeFormat.IMAGE
 
     @classmethod
     def create_random(cls, prompt: str, output_dir: str, **kwargs):
@@ -192,13 +192,19 @@ class ShaderArtifact(Artifact):
         """Render the shader to an image"""
         os.makedirs(output_dir, exist_ok=True)
 
-        # In a real implementation, this would call a renderer with the shader code
-        # For now, we'll just create a placeholder file
-        output_path = os.path.join(output_dir, f"{self.id}.png")
+        time_points = [0, 1]
+        frame_paths = []
 
-        shader_to_image(self.genome, output_path, 768, 768, uniforms={"time": 0})
+        for i, t in enumerate(time_points):
+            frame_path = f"{output_dir}/{self.id}_t{i}.png"
+            shader_to_image(self.genome, frame_path, 768, 768, uniforms={"time": t})
+            frame_paths.append(frame_path)
 
-        self.phenome = output_path
+        self.phenome = frame_paths
+        # output_path = os.path.join(output_dir, f"{self.id}.png")
+        # shader_to_image(self.genome, output_path, 768, 768, uniforms={"time": 0})
+
+        # self.phenome = output_path
 
         return self.phenome
 
@@ -247,6 +253,26 @@ class ShaderArtifact(Artifact):
         )
 
         return artifact
+
+    def compute_embedding(self) -> torch.Tensor:
+        """Compute embedding for this shader artifact"""
+        if self.embedding is not None:
+            return self.embedding
+
+        frame_embeddings = []
+        for frame_path in self.phenome:
+            if os.path.exists(frame_path):
+                frame_emb = image_embedder.embedImage(frame_path)
+                frame_embeddings.append(frame_emb)
+            else:
+                logging.warning(f"Frame path not found: {frame_path}")
+
+        # Concatenate
+        concat_embedding = torch.cat(frame_embeddings, dim=0)
+        # Normalize
+        normalized = torch.nn.functional.normalize(concat_embedding, dim=0)
+        self.embedding = normalized
+        return self.embedding
 
     # def mutate(self, mutation_idea: str, output_dir: str, **kwargs):
     #     """Create a mutated version of this artifact based on the mutation idea"""

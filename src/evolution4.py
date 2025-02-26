@@ -25,7 +25,7 @@ def generate_evolve_ideas(
 
     systemPrompt = f"""You are an expert in creating ideas for evolving artifacts.
     Return a JSON object with an "ideas" field containing an array of {count} strings, 
-    where each string is an idea.
+    where each string is a description of an idea.
     """
     promptPrefix = (
         "Create a variation of the parent"
