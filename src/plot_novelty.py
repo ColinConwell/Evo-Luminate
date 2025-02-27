@@ -9,29 +9,22 @@ from typing import List, Dict, Any
 
 def load_novelty_metrics(results_dir: str) -> List[Dict[str, Any]]:
     """
-    Load novelty metrics from all generation directories
+    Load novelty metrics from a single JSONL file
     """
     results_path = Path(results_dir)
     metrics_list = []
 
-    # Find all generation directories and the initial directory
-    gen_dirs = sorted(
-        [
-            d
-            for d in results_path.iterdir()
-            if d.is_dir() and (d.name.startswith("generation_") or d.name == "initial")
-        ]
-    )
+    # Look for the novelty_metrics.jsonl file
+    metrics_file = results_path / "novelty_metrics.jsonl"
 
-    for gen_dir in gen_dirs:
-        metrics_file = gen_dir / "novelty_metrics.json"
-        if metrics_file.exists():
-            with open(metrics_file, "r") as f:
-                metrics = json.load(f)
-                # If this is the "initial" directory, set generation to 0
-                if gen_dir.name == "initial":
-                    metrics["generation"] = 0
-                metrics_list.append(metrics)
+    if metrics_file.exists():
+        with open(metrics_file, "r") as f:
+            for line in f:
+                if line.strip():  # Skip empty lines
+                    metrics = json.loads(line)
+                    metrics_list.append(metrics)
+    else:
+        print(f"No novelty_metrics.jsonl file found in {results_dir}")
 
     # Sort by generation number
     metrics_list.sort(key=lambda x: x.get("generation", 0))

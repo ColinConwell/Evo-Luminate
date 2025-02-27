@@ -8,6 +8,7 @@ import torch
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Tuple, Union
+from datetime import datetime
 
 # from Genomes import Genome, ShaderGenome, IdeaGenome, PromptGenome
 from artifacts import Artifact, ShaderArtifact
@@ -103,32 +104,24 @@ class Population:
 
         return sorted_indices
 
-    def save(self, output_dir: str):
-        """Save all genomes to disk"""
+    def save(self, output_dir: str, generation: int = 0):
+        """Save population data to a JSONL file"""
         os.makedirs(output_dir, exist_ok=True)
 
-        # Save list of all genome IDs
-        genome_ids = [g.id for g in self.artifacts]
-        meta_path = os.path.join(output_dir, "population.json")
-        with open(meta_path, "w") as f:
-            json.dump(
-                {
-                    "genome_ids": genome_ids,
-                    "count": len(self.artifacts),
-                    "timestamp": time.time(),
-                },
-                f,
-                indent=2,
-            )
+        # Create population data entry
+        population_data = {
+            "generation": generation,
+            "timestamp": datetime.now().isoformat(),
+            "genome_ids": [g.id for g in self.artifacts],
+            "count": len(self.artifacts),
+        }
 
-        # Save each genome
-        # artifacts_dir = os.path.join(output_dir, "artifacts")
-        # os.makedirs(artifacts_dir, exist_ok=True)
+        # Append to population data file
+        population_path = os.path.join(output_dir, "population_data.jsonl")
+        with open(population_path, "a") as f:
+            f.write(json.dumps(population_data) + "\n")
 
-        # for artifact in self.artifacts:
-        #     artifact.save(artifacts_dir)
-
-        return meta_path
+        return population_path
 
     # @classmethod
     # def load(cls, input_dir: str) -> "Population":
