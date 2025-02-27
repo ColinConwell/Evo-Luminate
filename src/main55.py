@@ -109,13 +109,16 @@ def run_evolution_experiment(
     initial_dir = os.path.join(output_dir, "initial")
     os.makedirs(initial_dir, exist_ok=True)
 
+    artifacts_dir = os.path.join(output_dir, "artifacts")
+    os.makedirs(artifacts_dir, exist_ok=True)
+
     # Create initial population
     logging.info("Generating initial population...")
     initial_artifacts = []
     while len(initial_artifacts) < config["initial_population_size"]:
         try:
             artifact = ShaderArtifact.create_from_prompt(
-                prompt=config["prompt"], output_dir=initial_dir
+                prompt=config["prompt"], output_dir=artifacts_dir
             )
             initial_artifacts.append(artifact)
         except Exception as e:
@@ -155,7 +158,7 @@ def run_evolution_experiment(
                     creative_strategy=None,
                 )
                 new_artifact = ShaderArtifact.create_from_prompt(
-                    prompt=evolution_prompt, output_dir=gen_dir
+                    prompt=evolution_prompt, output_dir=artifacts_dir
                 )
                 new_artifacts.append(new_artifact)
             except Exception as e:
@@ -228,6 +231,7 @@ if __name__ == "__main__":
     run_evolution_experiment(
         output_dir=output_dir,
         config={
+            "random_seed": 42,
             "prompt": "Create an interesting shader",
             "initial_population_size": 6,
             "population_size": 12,

@@ -122,50 +122,50 @@ class Population:
             )
 
         # Save each genome
-        artifacts_dir = os.path.join(output_dir, "artifacts")
-        os.makedirs(artifacts_dir, exist_ok=True)
+        # artifacts_dir = os.path.join(output_dir, "artifacts")
+        # os.makedirs(artifacts_dir, exist_ok=True)
 
-        for artifact in self.artifacts:
-            artifact.save(artifacts_dir)
+        # for artifact in self.artifacts:
+        #     artifact.save(artifacts_dir)
 
         return meta_path
 
-    @classmethod
-    def load(cls, input_dir: str) -> "Population":
-        """Load population from disk"""
-        population = cls()
+    # @classmethod
+    # def load(cls, input_dir: str) -> "Population":
+    #     """Load population from disk"""
+    #     population = cls()
 
-        # Load list of genome IDs
-        meta_path = os.path.join(input_dir, "population.json")
-        if not os.path.exists(meta_path):
-            logging.error("Population metadata file not found: %s", meta_path)
-            return population
+    #     # Load list of genome IDs
+    #     meta_path = os.path.join(input_dir, "population.json")
+    #     if not os.path.exists(meta_path):
+    #         logging.error("Population metadata file not found: %s", meta_path)
+    #         return population
 
-        with open(meta_path, "r") as f:
-            meta = json.load(f)
+    #     with open(meta_path, "r") as f:
+    #         meta = json.load(f)
 
-        # Load each genome
-        artifacts_dir = os.path.join(input_dir, "artifacts")
-        for artifact_id in meta.get("artifact_ids", []):
-            artifact_path = os.path.join(artifacts_dir, f"{artifact_id}.json")
+    #     # Load each genome
+    #     artifacts_dir = os.path.join(input_dir, "artifacts")
+    #     for artifact_id in meta.get("artifact_ids", []):
+    #         artifact_path = os.path.join(artifacts_dir, f"{artifact_id}.json")
 
-            if not os.path.exists(artifact_path):
-                logging.warning("Artifact file not found: %s", artifact_path)
-                continue
+    #         if not os.path.exists(artifact_path):
+    #             logging.warning("Artifact file not found: %s", artifact_path)
+    #             continue
 
-            with open(artifact_path, "r") as f:
-                artifact_data = json.load(f)
+    #         with open(artifact_path, "r") as f:
+    #             artifact_data = json.load(f)
 
-            # Create appropriate artifact type based on the data
-            if artifact_data.get("type") == "ShaderArtifact":
-                artifact = ShaderArtifact.from_dict(artifact_data)
-            # elif artifact_data.get("type") == "IdeaGenome":
-            #     artifact = IdeaGenome.from_dict(artifact_data)
-            # elif artifact_data.get("type") == "PromptGenome":
-            #     artifact = PromptGenome.from_dict(artifact_data)
-            else:
-                raise ValueError(f"Unknown artifact type: {artifact_data.get('type')}")
+    #         # Create appropriate artifact type based on the data
+    #         if artifact_data.get("type") == "ShaderArtifact":
+    #             artifact = ShaderArtifact.from_dict(artifact_data)
+    #         # elif artifact_data.get("type") == "IdeaGenome":
+    #         #     artifact = IdeaGenome.from_dict(artifact_data)
+    #         # elif artifact_data.get("type") == "PromptGenome":
+    #         #     artifact = PromptGenome.from_dict(artifact_data)
+    #         else:
+    #             raise ValueError(f"Unknown artifact type: {artifact_data.get('type')}")
 
-            population.add(artifact)
+    #         population.add(artifact)
 
-        return population
+    #     return population

@@ -99,6 +99,7 @@ class ShaderArtifact(Artifact):
     You can only use these uniforms:
 	varying vec2 uv;
 	uniform float time;
+    Start the file with  "precision mediump float;"
     """
 
     @classmethod
@@ -108,8 +109,8 @@ class ShaderArtifact(Artifact):
 
         response = llm_client.chat.completions.create(
             model=defaultModel,
-            max_tokens=20000,
-            # reasoning_effort="low",
+            max_completion_tokens=20000,
+            reasoning_effort="low",
             messages=[
                 {"role": "system", "content": ShaderArtifact.systemPrompt},
                 {"role": "user", "content": f"User prompt: {prompt}"},
@@ -117,13 +118,30 @@ class ShaderArtifact(Artifact):
         )
 
         artifact.genome = extractCode(response.choices[0].message.content.strip())
-        artifact.render_phenotype(output_dir, **kwargs)
+        os.makedirs(os.path.join(output_dir, "images"), exist_ok=True)
+        artifact.render_phenotype(os.path.join(output_dir, "images"), **kwargs)
         artifact.compute_embedding()
 
+        os.makedirs(os.path.join(output_dir, "source"), exist_ok=True)
+        genome_path = os.path.join(output_dir, f"source/{artifact.id}.glsl")
+        with open(genome_path, "w") as f:
+            f.write(artifact.genome)
+
+        # if self.embedding is not None:
+        os.makedirs(os.path.join(output_dir, "embeddings"), exist_ok=True)
+        embedding_path = os.path.join(output_dir, f"embeddings/{artifact.id}.npy")
+        np.save(embedding_path, artifact.embedding.cpu().numpy())
+
         # Save prompt to output dir
-        prompt_path = os.path.join(output_dir, f"{artifact.id}_prompt.txt")
-        with open(prompt_path, "w") as f:
-            f.write(prompt)
+        # prompt_path = os.path.join(output_dir, f"{artifact.id}_prompt.txt")
+        # with open(prompt_path, "w") as f:
+        #     f.write(prompt)
+
+        # artifacts_dir = os.path.join(output_dir, "artifacts")
+        # os.makedirs(artifacts_dir, exist_ok=True)
+
+        # for artifact in self.artifacts:
+        #     artifact.save(artifacts_dir)
         return artifact
 
     @classmethod
@@ -180,16 +198,16 @@ class ShaderArtifact(Artifact):
         self.embedding = normalized
         return self.embedding
 
-    def save(self, output_dir: str):
-        """Save to disk"""
-        os.makedirs(output_dir, exist_ok=True)
-        genome_path = os.path.join(output_dir, f"{self.id}.glsl")
-        with open(genome_path, "w") as f:
-            f.write(self.genome)
+    # def save(self, output_dir: str):
+    #     """Save to disk"""
+    #     os.makedirs(output_dir, exist_ok=True)
+    #     genome_path = os.path.join(output_dir, f"{self.id}.glsl")
+    #     with open(genome_path, "w") as f:
+    #         f.write(self.genome)
 
-        if self.embedding is not None:
-            embedding_path = os.path.join(output_dir, f"{self.id}_embedding.npy")
-            np.save(embedding_path, self.embedding.cpu().numpy())
+    #     if self.embedding is not None:
+    #         embedding_path = os.path.join(output_dir, f"{self.id}_embedding.npy")
+    #         np.save(embedding_path, self.embedding.cpu().numpy())
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
