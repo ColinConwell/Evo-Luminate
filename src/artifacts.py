@@ -20,14 +20,14 @@ defaultModel = "openai:o3-mini"
 
 
 class Artifact:
+    name = "Artifact"
+
     def __init__(self, id: str = None):
         self.id = id or str(uuid.uuid4())
-        self.idea = None  # String description of the idea
         self.genome = None  # Code or prompt
         self.phenome = None  # Path to the rendered phenotype
         self.prompt = None  # Original generation prompt
         self.embedding = None
-        self.fitness = None
         self.creation_time = time.time()
         self.metadata = {}
 
@@ -44,26 +44,6 @@ class Artifact:
     def render_phenotype(self, output_dir: str, **kwargs) -> Optional[str]:
         """Render the phenotype from the genome"""
         raise NotImplementedError("Subclasses must implement this")
-
-    # def to_dict(self) -> Dict[str, Any]:
-    #     """Convert to a dictionary for serialization"""
-    #     embedding = (
-    #         self.embedding.cpu().numpy().tolist()
-    #         if self.embedding is not None
-    #         else None
-    #     )
-    #     return {
-    #         "id": self.id,
-    #         "idea": self.idea,
-    #         "genome": self.genome,
-    #         "phenome": self.phenome,
-    #         "prompt": self.prompt,
-    #         "embedding": embedding,
-    #         "fitness": self.fitness,
-    #         "creation_time": self.creation_time,
-    #         "metadata": self.metadata,
-    #         "type": self.__class__.__name__,
-    #     }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
@@ -93,6 +73,7 @@ class Artifact:
 
 
 class ShaderArtifact(Artifact):
+    name = "shader"
     systemPrompt = """You are an expert in creating WebGL 1.0 fragment shaders.
     Return valid webgl fragment shader.
     Provide the full fragment shader code without explanation.
@@ -110,7 +91,7 @@ class ShaderArtifact(Artifact):
         response = llm_client.chat.completions.create(
             model=defaultModel,
             max_completion_tokens=20000,
-            reasoning_effort="low",
+            reasoning_effort=kwargs.get("reasoning_effort", "low"),
             messages=[
                 {"role": "system", "content": ShaderArtifact.systemPrompt},
                 {"role": "user", "content": f"User prompt: {prompt}"},
@@ -133,33 +114,16 @@ class ShaderArtifact(Artifact):
         np.save(embedding_path, artifact.embedding.cpu().numpy())
 
         # Save prompt to output dir
-        # prompt_path = os.path.join(output_dir, f"{artifact.id}_prompt.txt")
-        # with open(prompt_path, "w") as f:
-        #     f.write(prompt)
+        os.makedirs(os.path.join(output_dir, "prompts"), exist_ok=True)
+        prompt_path = os.path.join(output_dir, f"prompts/{artifact.id}.txt")
+        with open(prompt_path, "w") as f:
+            f.write(prompt)
 
         # artifacts_dir = os.path.join(output_dir, "artifacts")
         # os.makedirs(artifacts_dir, exist_ok=True)
 
         # for artifact in self.artifacts:
         #     artifact.save(artifacts_dir)
-        return artifact
-
-    @classmethod
-    def from_genome(cls, genome: str, output_dir: str, prompt: str = None, **kwargs):
-        """Create a shader artifact from existing code and render it"""
-        artifact = cls()
-        artifact.genome = genome
-        artifact.prompt = prompt
-
-        # Add metadata if provided
-        if "metadata" in kwargs:
-            artifact.metadata = kwargs["metadata"]
-        if "parent_id" in kwargs:
-            artifact.metadata["parent_id"] = kwargs["parent_id"]
-
-        # Render phenotype immediately
-        artifact.render_phenotype(output_dir, **kwargs)
-
         return artifact
 
     def render_phenotype(self, output_dir: str, **kwargs) -> Optional[str]:
@@ -209,98 +173,47 @@ class ShaderArtifact(Artifact):
     #         embedding_path = os.path.join(output_dir, f"{self.id}_embedding.npy")
     #         np.save(embedding_path, self.embedding.cpu().numpy())
 
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]):
-        """Create from a dictionary"""
-        artifact = cls(id=data["id"])
-        artifact.idea = data.get("idea")
-        artifact.genome = data.get("genome")
-        artifact.phenome = data.get("phenome")
-        artifact.prompt = data.get("prompt")
-        artifact.fitness = data.get("fitness")
-        artifact.creation_time = data.get("creation_time", time.time())
-        artifact.metadata = data.get("metadata", {})
 
-        if data.get("embedding") is not None:
-            artifact.embedding = torch.tensor(data["embedding"])
+class GameIdeaArtifact(Artifact):
+    name = "game idea"
+    systemPrompt = """You are an expert in designing p5.js games
+    Return a description of a game that can be implemented in p5.js
+    Include mechanics, art style, rules, win conditions, and any other relevant details
+    """
+
+    @classmethod
+    def create_from_prompt(cls, prompt: str, output_dir: str, **kwargs):
+        artifact = cls()
+        artifact.prompt = prompt
+
+        response = llm_client.chat.completions.create(
+            model=defaultModel,
+            max_completion_tokens=20000,
+            reasoning_effort=kwargs.get("reasoning_effort", "low"),
+            messages=[
+                {"role": "system", "content": GameIdeaArtifact.systemPrompt},
+                {"role": "user", "content": f"User prompt: {prompt}"},
+            ],
+        )
+
+        artifact.genome = response.choices[0].message.content.strip()
+
+        os.makedirs(os.path.join(output_dir, "ideas"), exist_ok=True)
+        idea_path = os.path.join(output_dir, f"ideas/{artifact.id}.txt")
+        with open(idea_path, "w") as f:
+            f.write(artifact.genome)
+
+        artifact.compute_embedding()
+        os.makedirs(os.path.join(output_dir, "embeddings"), exist_ok=True)
+        embedding_path = os.path.join(output_dir, f"embeddings/{artifact.id}.npy")
+        np.save(embedding_path, artifact.embedding.cpu().numpy())
 
         return artifact
 
-    # def mutate(self, mutation_idea: str, output_dir: str, **kwargs):
-    #     """Create a mutated version of this artifact based on the mutation idea"""
-    #     # Generate the mutated shader code
-    #     mutation_prompt = f"""
-    #     ORIGINAL PROMPT: {self.prompt}
+    def compute_embedding(self) -> torch.Tensor:
+        """Compute embedding for this game idea artifact"""
+        if self.embedding is not None:
+            return self.embedding
 
-    #     MUTATION IDEA: {mutation_idea}
-
-    #     CURRENT CODE:
-    #     ```
-    #     {self.genome}
-    #     ```
-
-    #     Create a WebGL fragment shader based on this mutation idea.
-    #     Provide only the shader code without explanation.
-    #     """
-
-    #     response = llm_client.chat.completions.create(
-    #         model="openai:gpt-4o-mini",
-    #         messages=[{"role": "user", "content": mutation_prompt}],
-    #     )
-
-    #     # Create a new artifact with the mutated genome
-    #     mutated_code = response.choices[0].message.content.strip()
-    #     mutated = ShaderArtifact.from_genome(
-    #         genome=mutated_code,
-    #         output_dir=output_dir,
-    #         prompt=self.prompt,
-    #         metadata={"parent_id": self.id, "mutation_idea": mutation_idea},
-    #     )
-
-    #     return mutated
-
-    # def crossover_with(
-    #     self,
-    #     other_artifacts: List[Artifact],
-    #     crossover_idea: str,
-    #     output_dir: str,
-    # ):
-    #     """Create a new artifact by crossing over this artifact with others"""
-    #     # Combine this artifact with others
-    #     parents = [self] + other_artifacts
-
-    #     # Format parent code snippets
-    #     parent_codes = []
-    #     for i, parent in enumerate(parents):
-    #         code_snippet = parent.genome
-    #         parent_codes.append(f"Parent {i+1}:\n```\n{code_snippet}\n```")
-
-    #     # Create crossover prompt
-    #     crossover_prompt = f"""
-    #     EDIT IDEA: {crossover_idea}
-
-    #     PARENT CODES:
-    #     {"\n\n".join(parent_codes)}
-    #     """
-
-    #     response = llm_client.chat.completions.create(
-    #         model=defaultModel,
-    #         messages=[
-    #             {"role": "system", "content": ShaderArtifact.systemPrompt},
-    #             {"role": "user", "content": crossover_prompt},
-    #         ],
-    #     )
-
-    #     # Create the crossover artifact
-    #     crossover_code = extractCode(response.choices[0].message.content.strip())
-    #     artifact = ShaderArtifact.from_genome(
-    #         genome=crossover_code,
-    #         output_dir=output_dir,
-    #         prompt=self.prompt,
-    #         metadata={
-    #             "parent_ids": [p.id for p in parents],
-    #             "crossover_idea": crossover_idea,
-    #         },
-    #     )
-
-    #     return artifact
+        self.embedding = text_embedder.embedText(self.genome)[0]
+        return self.embedding

@@ -9,13 +9,15 @@ from enum import Enum
 import torch
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Union
-import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from population import Population
 from artifacts import Artifact, ShaderArtifact
 
 from models import llm_client
+from creative_strategies_manager import CreativityStrategyManager
+
+manager = CreativityStrategyManager("creativity_strategies.json")
 
 
 def artifacts_to_string(artifacts):
@@ -26,18 +28,24 @@ def artifacts_to_string(artifacts):
     return s
 
 
-def construct_evolution_prompt(artifacts, user_prompt, summary, creative_strategy=None):
+def construct_evolution_prompt(
+    artifacts, user_prompt, summary, evolution_mode="variation", creative_strategy=None
+):
+    # evolution_mode can be 'variation' or 'creation'
     prompt = f"I'm exploring diverse possibilities for {user_prompt}s.\n\n"
     prompt += f"Summary of the current population: {summary}\n\n"
-    prompt += "Make this shader significantly more interesting and less like what is done before:\n\n"
-    prompt += artifacts_to_string(artifacts)
 
-    # if creative_strategy:
-    #     prompt += f"{creative_strategy}\n\n"
-    # else:
-    #     prompt += "create a new implementation that is significantly different from these examples.\n\n"
+    if evolution_mode == "variation":
+        prompt += f"Make this {artifacts[0].name} significantly less like what is done before:\n\n"
+    elif evolution_mode == "creation":
+        prompt += f"Create a new {artifacts[0].name} that is significantly different from what is done before:\n\n"
 
-    # prompt += f"Generate a complete, novel {domain_prompt.split()[0]} that explores an area not represented in the examples above."
+    if creative_strategy:
+        prompt += f"\n{creative_strategy}\n"
+
+    if evolution_mode == "variation":
+        prompt += "Current " + (artifacts[0].name) + ":\n\n"
+        prompt += artifacts[0].genome + "\n\n"
 
     return prompt
 
@@ -87,6 +95,18 @@ def save_novelty_metrics(
         f.write(json.dumps(novelty_metrics) + "\n")
 
 
+def get_artifact_class(config: Dict[str, Any]) -> Artifact:
+    artifact_class_name = config.get("artifact_class", "ShaderArtifact")
+    if artifact_class_name == "ShaderArtifact":
+        from artifacts import ShaderArtifact
+
+        return ShaderArtifact
+    elif artifact_class_name == "GameIdeaArtifact":
+        from artifacts import GameIdeaArtifact
+
+        return GameIdeaArtifact
+
+
 def run_evolution_experiment(
     output_dir: str, config: Dict[str, Any] = None
 ) -> Population:
@@ -105,6 +125,9 @@ def run_evolution_experiment(
     artifacts_dir = os.path.join(output_dir, "artifacts")
     os.makedirs(artifacts_dir, exist_ok=True)
 
+    # Get the artifact class based on config
+    ArtifactClass = get_artifact_class(config)
+
     # Create initial population
     logging.info("Generating initial population...")
     initial_artifacts = []
@@ -112,7 +135,7 @@ def run_evolution_experiment(
     # Parallelize initial population creation
     def create_artifact():
         try:
-            return ShaderArtifact.create_from_prompt(
+            return ArtifactClass.create_from_prompt(
                 prompt=config["prompt"], output_dir=artifacts_dir
             )
         except Exception as e:
@@ -147,10 +170,12 @@ def run_evolution_experiment(
         new_artifacts = []
 
         summary = complete_prompt(
-            f"Summarize the collection of shaders including techniques, goals and methods: {artifacts_to_string(population.get_all())}",
+            f"Create a concise overview of the collection of {ArtifactClass.name}s including specific goals and methods: {artifacts_to_string(population.get_all())}",
             model="openai:gpt-4o-mini",
         )
+        print("-" * 80)
         print(summary)
+        print("-" * 80)
 
         to_evolve = random.sample(
             population.get_all(), config["children_per_generation"]
@@ -159,13 +184,19 @@ def run_evolution_experiment(
         # Parallelize artifact evolution
         def evolve_artifact(artifact):
             try:
+                creative_strategy = (
+                    manager.to_prompt(manager.get_random_strategy())
+                    if config["use_creative_strategies"]
+                    else None
+                )
                 evolution_prompt = construct_evolution_prompt(
                     artifacts=[artifact],
                     user_prompt=config["prompt"],
                     summary=summary,
-                    creative_strategy=None,
+                    evolution_mode=config["evolution_mode"],
+                    creative_strategy=creative_strategy,
                 )
-                return ShaderArtifact.create_from_prompt(
+                return ArtifactClass.create_from_prompt(
                     prompt=evolution_prompt, output_dir=artifacts_dir
                 )
             except Exception as e:
@@ -237,16 +268,34 @@ if __name__ == "__main__":
     output_dir = os.path.join("results", f"run_{timestamp}")
     os.makedirs(output_dir, exist_ok=True)
 
+    # run_evolution_experiment(
+    #     output_dir=output_dir,
+    #     config={
+    #         "random_seed": 42,
+    #         "prompt": "Create an interesting shader",
+    #         "initial_population_size": 12,
+    #         "population_size": 12,
+    #         "children_per_generation": 6,
+    #         "num_generations": 20,
+    #         "k_neighbors": 3,
+    #         "max_workers": 4,  # Control parallelism level
+    #         "artifact_class": "ShaderArtifact",  # Default to ShaderArtifact
+    #         "use_creative_strategies": True,
+    #     },
+    # )
     run_evolution_experiment(
         output_dir=output_dir,
         config={
             "random_seed": 42,
-            "prompt": "Create an interesting shader",
+            "prompt": "a creative variation of the game snake",
             "initial_population_size": 12,
             "population_size": 12,
             "children_per_generation": 6,
             "num_generations": 20,
             "k_neighbors": 3,
             "max_workers": 4,  # Control parallelism level
+            "artifact_class": "GameIdeaArtifact",  # Default to ShaderArtifact
+            "evolution_mode": "creation",
+            "use_creative_strategies": True,
         },
     )

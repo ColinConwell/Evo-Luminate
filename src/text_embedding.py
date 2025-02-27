@@ -15,7 +15,7 @@ class TextEmbedder:
         )
         return last_hidden.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
 
-    def encodeText(self, text: Union[str, List[str]]) -> torch.Tensor:
+    def embedText(self, text: Union[str, List[str]]) -> torch.Tensor:
         """
         Encode text into embeddings using the E5 model.
 
@@ -65,7 +65,7 @@ if __name__ == "__main__":
 
     # Single text example
     single_text = "How do I make chocolate chip cookies?"
-    embedding = embedder.encodeText(single_text)
+    embedding = embedder.embedText(single_text)
     print(f"Single embedding shape: {embedding.shape}")
 
     # Multiple texts example
@@ -73,15 +73,15 @@ if __name__ == "__main__":
         "How much protein should a female eat?",
         "What is the definition of summit?",
     ]
-    embeddings = embedder.encodeText(texts)
+    embeddings = embedder.embedText(texts)
     print(f"Multiple embeddings shape: {embeddings.shape}")
 
     # Compare similarity between two texts
     text1 = "query: how much protein should a female eat"
     text2 = "passage: As a general guideline, the CDC's average requirement of protein for women ages 19 to 70 is 46 grams per day."
 
-    emb1 = embedder.encodeText(text1)
-    emb2 = embedder.encodeText(text2)
+    emb1 = embedder.embedText(text1)
+    emb2 = embedder.embedText(text2)
 
     similarity = (emb1 @ emb2.T) * 100
     print(f"Similarity score: {similarity.item():.2f}")
