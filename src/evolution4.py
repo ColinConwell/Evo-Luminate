@@ -7,6 +7,8 @@ from typing import List, Dict, Any, Optional, Union
 from models import llm_client, text_embedder, image_embedder
 from artifacts import Artifact
 
+defaultModel = "openai:o3-mini"
+
 
 def generate_evolve_ideas(
     parents: List[Artifact], strategy: str = "", count: int = 3
@@ -40,7 +42,7 @@ def generate_evolve_ideas(
 
     # Generate ideas using the model
     response = llm_client.chat.completions.create(
-        model="openai:gpt-4o-mini",
+        model=defaultModel,
         messages=[
             {"role": "system", "content": systemPrompt},
             {"role": "user", "content": prompt},

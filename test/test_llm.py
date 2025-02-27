@@ -9,7 +9,8 @@ generation_prompt = (
 )
 
 response = llm_client.chat.completions.create(
-    model="openai:gpt-4o-mini",
+    # model="openai:gpt-4o-mini",
+    model="openai:o3-mini",
     messages=[{"role": "user", "content": generation_prompt}],
     response_format={"type": "json_object"},
 )

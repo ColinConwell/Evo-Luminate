@@ -15,20 +15,11 @@ from shaderToImage import shader_to_image
 from models import llm_client, text_embedder, image_embedder
 from utils import extractCode
 
-# defaultModel = "openai:3o-mini"
-defaultModel = "openai:gpt-4o-mini"
-
-
-# class PhenotypeFormat(Enum):
-#     """Enum defining the format of an artifact's phenotype"""
-
-#     TEXT = "text"
-#     IMAGE = "image"
+defaultModel = "openai:o3-mini"
+# defaultModel = "openai:gpt-4o-mini"
 
 
 class Artifact:
-    """Base class for creative artifacts with idea, genome, and phenome components"""
-
     def __init__(self, id: str = None):
         self.id = id or str(uuid.uuid4())
         self.idea = None  # String description of the idea
@@ -40,20 +31,10 @@ class Artifact:
         self.creation_time = time.time()
         self.metadata = {}
 
-    # @property
-    # def phenotype_format(self) -> PhenotypeFormat:
-    #     """Returns the format of this artifact's phenotype"""
-    #     raise NotImplementedError("Subclasses must implement this")
-
     @classmethod
     def create_random(cls, prompt: str, output_dir: str, **kwargs):
         """Generate a random artifact directly (no explicit idea) and render it"""
         raise NotImplementedError("Subclasses must implement this")
-
-    # @classmethod
-    # def from_idea(cls, idea: str, output_dir: str, prompt: str = None, **kwargs):
-    #     """Create an artifact by implementing the given idea and render it"""
-    #     raise NotImplementedError("Subclasses must implement this")
 
     @classmethod
     def from_genome(cls, genome: str, output_dir: str, prompt: str = None, **kwargs):
@@ -64,25 +45,25 @@ class Artifact:
         """Render the phenotype from the genome"""
         raise NotImplementedError("Subclasses must implement this")
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to a dictionary for serialization"""
-        embedding = (
-            self.embedding.cpu().numpy().tolist()
-            if self.embedding is not None
-            else None
-        )
-        return {
-            "id": self.id,
-            "idea": self.idea,
-            "genome": self.genome,
-            "phenome": self.phenome,
-            "prompt": self.prompt,
-            "embedding": embedding,
-            "fitness": self.fitness,
-            "creation_time": self.creation_time,
-            "metadata": self.metadata,
-            "type": self.__class__.__name__,
-        }
+    # def to_dict(self) -> Dict[str, Any]:
+    #     """Convert to a dictionary for serialization"""
+    #     embedding = (
+    #         self.embedding.cpu().numpy().tolist()
+    #         if self.embedding is not None
+    #         else None
+    #     )
+    #     return {
+    #         "id": self.id,
+    #         "idea": self.idea,
+    #         "genome": self.genome,
+    #         "phenome": self.phenome,
+    #         "prompt": self.prompt,
+    #         "embedding": embedding,
+    #         "fitness": self.fitness,
+    #         "creation_time": self.creation_time,
+    #         "metadata": self.metadata,
+    #         "type": self.__class__.__name__,
+    #     }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
@@ -90,12 +71,15 @@ class Artifact:
         raise NotImplementedError("Subclasses must implement this")
 
     def save(self, output_dir: str):
-        """Save to disk"""
-        os.makedirs(output_dir, exist_ok=True)
-        artifact_path = os.path.join(output_dir, f"{self.id}.json")
-        with open(artifact_path, "w") as f:
-            json.dump(self.to_dict(), f, indent=2)
-        return artifact_path
+        raise NotImplementedError("Subclasses must implement this")
+        # """Save to disk"""
+        # os.makedirs(output_dir, exist_ok=True)
+
+        # artifact_path = os.path.join(output_dir, f"{self.id}.json")
+        # with open(artifact_path, "w") as f:
+        #     json.dump(self.to_dict(), f, indent=2)
+
+        # return artifact_path
 
     def crossover_with(
         self,
@@ -117,18 +101,15 @@ class ShaderArtifact(Artifact):
 	uniform float time;
     """
 
-    # @property
-    # def phenotype_format(self) -> PhenotypeFormat:
-    #     return PhenotypeFormat.IMAGE
-
     @classmethod
-    def create_random(cls, prompt: str, output_dir: str, **kwargs):
-        """Generate a random shader directly from a prompt and render it"""
+    def create_from_prompt(cls, prompt: str, output_dir: str, **kwargs):
         artifact = cls()
         artifact.prompt = prompt
 
         response = llm_client.chat.completions.create(
             model=defaultModel,
+            max_tokens=20000,
+            # reasoning_effort="low",
             messages=[
                 {"role": "system", "content": ShaderArtifact.systemPrompt},
                 {"role": "user", "content": f"User prompt: {prompt}"},
@@ -136,39 +117,14 @@ class ShaderArtifact(Artifact):
         )
 
         artifact.genome = extractCode(response.choices[0].message.content.strip())
-        print(artifact.genome)
         artifact.render_phenotype(output_dir, **kwargs)
+        artifact.compute_embedding()
+
+        # Save prompt to output dir
+        prompt_path = os.path.join(output_dir, f"{artifact.id}_prompt.txt")
+        with open(prompt_path, "w") as f:
+            f.write(prompt)
         return artifact
-
-    # @classmethod
-    # def from_idea(cls, idea: str, output_dir: str, prompt: str = None, **kwargs):
-    #     """Create a shader by implementing the given idea and render it"""
-    #     artifact = cls()
-    #     artifact.idea = idea
-    #     artifact.prompt = prompt
-
-    #     # Generate shader code from idea
-    #     implementation_prompt = f"""
-    #     IDEA: {idea}
-
-    #     PROMPT: {prompt or "Create an interesting shader"}
-
-    #     Create a WebGL fragment shader based on this idea.
-    #     Provide only the shader code without explanation.
-    #     """
-
-    #     response = llm_client.chat.completions.create(
-    #         model="openai:gpt-4o-mini",
-    #         messages=[{"role": "user", "content": implementation_prompt}],
-    #     )
-
-    #     # Set artifact properties
-    #     artifact.genome = response.choices[0].message.content.strip()
-
-    #     # Render phenotype immediately
-    #     artifact.render_phenotype(output_dir, **kwargs)
-
-    #     return artifact
 
     @classmethod
     def from_genome(cls, genome: str, output_dir: str, prompt: str = None, **kwargs):
@@ -192,7 +148,7 @@ class ShaderArtifact(Artifact):
         """Render the shader to an image"""
         os.makedirs(output_dir, exist_ok=True)
 
-        time_points = [0, 1]
+        time_points = [0, 3]
         frame_paths = []
 
         for i, t in enumerate(time_points):
@@ -201,58 +157,8 @@ class ShaderArtifact(Artifact):
             frame_paths.append(frame_path)
 
         self.phenome = frame_paths
-        # output_path = os.path.join(output_dir, f"{self.id}.png")
-        # shader_to_image(self.genome, output_path, 768, 768, uniforms={"time": 0})
-
-        # self.phenome = output_path
 
         return self.phenome
-
-    def crossover_with(
-        self,
-        other_artifacts: List[Artifact],
-        crossover_idea: str,
-        output_dir: str,
-    ):
-        """Create a new artifact by crossing over this artifact with others"""
-        # Combine this artifact with others
-        parents = [self] + other_artifacts
-
-        # Format parent code snippets
-        parent_codes = []
-        for i, parent in enumerate(parents):
-            code_snippet = parent.genome
-            parent_codes.append(f"Parent {i+1}:\n```\n{code_snippet}\n```")
-
-        # Create crossover prompt
-        crossover_prompt = f"""
-        EDIT IDEA: {crossover_idea}
-        
-        PARENT CODES:
-        {"\n\n".join(parent_codes)}
-        """
-
-        response = llm_client.chat.completions.create(
-            model=defaultModel,
-            messages=[
-                {"role": "system", "content": ShaderArtifact.systemPrompt},
-                {"role": "user", "content": crossover_prompt},
-            ],
-        )
-
-        # Create the crossover artifact
-        crossover_code = extractCode(response.choices[0].message.content.strip())
-        artifact = ShaderArtifact.from_genome(
-            genome=crossover_code,
-            output_dir=output_dir,
-            prompt=self.prompt,
-            metadata={
-                "parent_ids": [p.id for p in parents],
-                "crossover_idea": crossover_idea,
-            },
-        )
-
-        return artifact
 
     def compute_embedding(self) -> torch.Tensor:
         """Compute embedding for this shader artifact"""
@@ -273,6 +179,34 @@ class ShaderArtifact(Artifact):
         normalized = torch.nn.functional.normalize(concat_embedding, dim=0)
         self.embedding = normalized
         return self.embedding
+
+    def save(self, output_dir: str):
+        """Save to disk"""
+        os.makedirs(output_dir, exist_ok=True)
+        genome_path = os.path.join(output_dir, f"{self.id}.glsl")
+        with open(genome_path, "w") as f:
+            f.write(self.genome)
+
+        if self.embedding is not None:
+            embedding_path = os.path.join(output_dir, f"{self.id}_embedding.npy")
+            np.save(embedding_path, self.embedding.cpu().numpy())
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]):
+        """Create from a dictionary"""
+        artifact = cls(id=data["id"])
+        artifact.idea = data.get("idea")
+        artifact.genome = data.get("genome")
+        artifact.phenome = data.get("phenome")
+        artifact.prompt = data.get("prompt")
+        artifact.fitness = data.get("fitness")
+        artifact.creation_time = data.get("creation_time", time.time())
+        artifact.metadata = data.get("metadata", {})
+
+        if data.get("embedding") is not None:
+            artifact.embedding = torch.tensor(data["embedding"])
+
+        return artifact
 
     # def mutate(self, mutation_idea: str, output_dir: str, **kwargs):
     #     """Create a mutated version of this artifact based on the mutation idea"""
@@ -307,19 +241,48 @@ class ShaderArtifact(Artifact):
 
     #     return mutated
 
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]):
-        """Create from a dictionary"""
-        artifact = cls(id=data["id"])
-        artifact.idea = data.get("idea")
-        artifact.genome = data.get("genome")
-        artifact.phenome = data.get("phenome")
-        artifact.prompt = data.get("prompt")
-        artifact.fitness = data.get("fitness")
-        artifact.creation_time = data.get("creation_time", time.time())
-        artifact.metadata = data.get("metadata", {})
+    # def crossover_with(
+    #     self,
+    #     other_artifacts: List[Artifact],
+    #     crossover_idea: str,
+    #     output_dir: str,
+    # ):
+    #     """Create a new artifact by crossing over this artifact with others"""
+    #     # Combine this artifact with others
+    #     parents = [self] + other_artifacts
 
-        if data.get("embedding") is not None:
-            artifact.embedding = torch.tensor(data["embedding"])
+    #     # Format parent code snippets
+    #     parent_codes = []
+    #     for i, parent in enumerate(parents):
+    #         code_snippet = parent.genome
+    #         parent_codes.append(f"Parent {i+1}:\n```\n{code_snippet}\n```")
 
-        return artifact
+    #     # Create crossover prompt
+    #     crossover_prompt = f"""
+    #     EDIT IDEA: {crossover_idea}
+
+    #     PARENT CODES:
+    #     {"\n\n".join(parent_codes)}
+    #     """
+
+    #     response = llm_client.chat.completions.create(
+    #         model=defaultModel,
+    #         messages=[
+    #             {"role": "system", "content": ShaderArtifact.systemPrompt},
+    #             {"role": "user", "content": crossover_prompt},
+    #         ],
+    #     )
+
+    #     # Create the crossover artifact
+    #     crossover_code = extractCode(response.choices[0].message.content.strip())
+    #     artifact = ShaderArtifact.from_genome(
+    #         genome=crossover_code,
+    #         output_dir=output_dir,
+    #         prompt=self.prompt,
+    #         metadata={
+    #             "parent_ids": [p.id for p in parents],
+    #             "crossover_idea": crossover_idea,
+    #         },
+    #     )
+
+    #     return artifact

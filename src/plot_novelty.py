@@ -14,12 +14,12 @@ def load_novelty_metrics(results_dir: str) -> List[Dict[str, Any]]:
     results_path = Path(results_dir)
     metrics_list = []
 
-    # Find all generation directories
+    # Find all generation directories and the initial directory
     gen_dirs = sorted(
         [
             d
             for d in results_path.iterdir()
-            if d.is_dir() and d.name.startswith("generation_")
+            if d.is_dir() and (d.name.startswith("generation_") or d.name == "initial")
         ]
     )
 
@@ -28,6 +28,9 @@ def load_novelty_metrics(results_dir: str) -> List[Dict[str, Any]]:
         if metrics_file.exists():
             with open(metrics_file, "r") as f:
                 metrics = json.load(f)
+                # If this is the "initial" directory, set generation to 0
+                if gen_dir.name == "initial":
+                    metrics["generation"] = 0
                 metrics_list.append(metrics)
 
     # Sort by generation number
@@ -45,61 +48,55 @@ def plot_novelty_metrics(metrics_list: List[Dict[str, Any]], output_path: str = 
 
     generations = [m.get("generation", i + 1) for i, m in enumerate(metrics_list)]
     mean_novelty = [m.get("mean_novelty", 0) for m in metrics_list]
-    max_novelty = [m.get("max_novelty", 0) for m in metrics_list]
-    min_novelty = [m.get("min_novelty", 0) for m in metrics_list]
+    # Extract mean genome length data
+    mean_genome_length = [m.get("mean_genome_length", 0) for m in metrics_list]
+    # max_novelty = [m.get("max_novelty", 0) for m in metrics_list]
+    # min_novelty = [m.get("min_novelty", 0) for m in metrics_list]
 
-    plt.figure(figsize=(12, 7))
+    # Create figure with primary y-axis
+    fig, ax1 = plt.subplots(figsize=(12, 7))
 
-    # Plot mean novelty with confidence interval
-    plt.plot(generations, mean_novelty, "b-", linewidth=2, label="Mean Novelty")
+    # Plot mean novelty on primary y-axis
+    color = "blue"
+    ax1.set_xlabel("Generation", fontsize=12)
+    ax1.set_ylabel("Novelty Score (Cosine Distance)", fontsize=12, color=color)
+    ax1.plot(generations, mean_novelty, color=color, linewidth=2, label="Mean Novelty")
+    ax1.tick_params(axis="y", labelcolor=color)
 
-    # # Plot min and max as a shaded area
-    # plt.fill_between(
-    #     generations,
-    #     min_novelty,
-    #     max_novelty,
-    #     color="blue",
-    #     alpha=0.2,
-    #     label="Min-Max Range",
-    # )
+    # Create secondary y-axis and plot mean genome length
+    ax2 = ax1.twinx()
+    color = "red"
+    ax2.set_ylabel("Mean Genome Length", fontsize=12, color=color)
+    ax2.plot(
+        generations,
+        mean_genome_length,
+        color=color,
+        linestyle="-",
+        linewidth=2,
+        label="Mean Genome Length",
+    )
+    ax2.tick_params(axis="y", labelcolor=color)
 
-    # # Add individual lines for min and max
-    # plt.plot(generations, max_novelty, "g--", linewidth=1, label="Max Novelty")
-    # plt.plot(generations, min_novelty, "r--", linewidth=1, label="Min Novelty")
+    # Add title and grid
+    plt.title("Population Novelty and Genome Length Across Generations", fontsize=14)
+    ax1.grid(True, linestyle="--", alpha=0.7)
 
-    plt.xlabel("Generation", fontsize=12)
-    plt.ylabel("Novelty Score (Cosine Distance)", fontsize=12)
-    plt.title("Population Novelty Across Generations", fontsize=14)
-    plt.grid(True, linestyle="--", alpha=0.7)
-    plt.legend()
+    # Create combined legend
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
 
-    # Add annotations for highest and lowest points
-    max_gen_idx = np.argmax(mean_novelty)
-    min_gen_idx = np.argmin(mean_novelty)
-
-    # plt.annotate(
-    #     f"Max: {mean_novelty[max_gen_idx]:.4f}",
-    #     xy=(generations[max_gen_idx], mean_novelty[max_gen_idx]),
-    #     xytext=(10, 10),
-    #     textcoords="offset points",
-    #     arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=.2"),
-    # )
-
-    # plt.annotate(
-    #     f"Min: {mean_novelty[min_gen_idx]:.4f}",
-    #     xy=(generations[min_gen_idx], mean_novelty[min_gen_idx]),
-    #     xytext=(10, -20),
-    #     textcoords="offset points",
-    #     arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=.2"),
-    # )
+    # Add annotations for highest and lowest points (commented out for now)
+    # max_gen_idx = np.argmax(mean_novelty)
+    # min_gen_idx = np.argmin(mean_novelty)
 
     plt.tight_layout()
 
     if output_path:
         plt.savefig(output_path, dpi=300, bbox_inches="tight")
         print(f"Plot saved to {output_path}")
-    else:
-        plt.show()
+    # else:
+    plt.show()
 
 
 def main():
