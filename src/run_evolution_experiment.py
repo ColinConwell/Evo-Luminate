@@ -193,20 +193,32 @@ def evolve_population(population, config, artifacts_dir, ArtifactClass, summary=
 
     def evolve_artifact(artifact):
         try:
+            do_crossover = random.random() < config.get("crossover_rate", 0.0)
             creative_strategy = (
                 manager.get_random_strategy()
                 if config["use_creative_strategies"]
                 else None
             )
-            evolution_prompt = construct_evolution_prompt(
-                artifacts=[artifact],
-                user_prompt=config["prompt"],
-                summary=summary,
-                evolution_mode=config["evolution_mode"],
-                creative_strategy=(
-                    manager.to_prompt(creative_strategy) if creative_strategy else None
-                ),
+            creative_strategy_prompt = (
+                manager.to_prompt(creative_strategy) if creative_strategy else None
             )
+            if do_crossover:
+                mate = random.choice(population.get_all())
+                evolution_prompt = construct_crossover_prompt(
+                    artifacts=[artifact, mate],
+                    user_prompt=config["prompt"],
+                    summary=summary,
+                    creative_strategy=creative_strategy_prompt,
+                )
+            else:
+                evolution_prompt = construct_evolution_prompt(
+                    artifacts=[artifact],
+                    user_prompt=config["prompt"],
+                    summary=summary,
+                    evolution_mode=config["evolution_mode"],
+                    creative_strategy=creative_strategy_prompt,
+                )
+
             new_artifact = ArtifactClass.create_from_prompt(
                 prompt=evolution_prompt,
                 output_dir=artifacts_dir,

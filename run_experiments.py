@@ -20,8 +20,8 @@ def create_experiment_name(config: Dict[str, Any]) -> str:
     mode = config["evolution_mode"]
     reasoning = config["reasoning_effort"]
     summary = "summ" if config.get("use_summary", True) else "no-summ"
-
-    return f"{domain}_{strat}_{mode}_{reasoning}_{summary}"
+    crossover = "_crossover" if config.get("crossover_rate", 0.0) > 0.0 else ""
+    return f"{domain}_{strat}_{mode}_{reasoning}_{summary}{crossover}"
 
 
 def run_from_config(study_dir: str, config: Dict[str, Any]):
@@ -67,10 +67,10 @@ def run_ablation_study(base_output_dir: str, random_seeds: list = [42, 43, 44]):
     # Define the domains to test
     domains = [
         {"artifact_class": "ShaderArtifact", "prompt": "Create an interesting shader"},
-        {
-            "artifact_class": "GameIdeaArtifact",
-            "prompt": "a creative variation of the game snake",
-        },
+        # {
+        #     "artifact_class": "GameIdeaArtifact",
+        #     "prompt": "a creative variation of the game snake",
+        # },
     ]
 
     # Common configuration parameters
@@ -124,6 +124,16 @@ def run_ablation_study(base_output_dir: str, random_seeds: list = [42, 43, 44]):
                     "random_seed": seed,
                 }
                 run_from_config(study_dir, full_config)
+
+    for seed in random_seeds:
+        for domain_config in domains:
+            full_config = {
+                **common_config,
+                **domain_config,
+                "random_seed": seed,
+                "crossover_rate": 0.3,
+            }
+            run_from_config(study_dir, full_config)
 
     # Log completion of core experiments
     logging.info("Core 2x2 experiments complete.")

@@ -48,6 +48,7 @@ def load_study_metrics(study_dir: str) -> Dict[str, Dict[str, Any]]:
                 "reasoning_effort": config.get("reasoning_effort", "low"),
                 "use_summary": config.get("use_summary", True),
                 "seed": config.get("random_seed", None),
+                "crossover": config.get("crossover_rate", 0.0) > 0.0,
             }
 
             # Create a config key for grouping similar configurations (ignoring seed)
@@ -56,7 +57,8 @@ def load_study_metrics(study_dir: str) -> Dict[str, Dict[str, Any]]:
                 f"{'strat' if config_info['creative_strategies'] else 'nostrat'}_"
                 f"{config_info['evolution_mode']}_"
                 f"{config_info['reasoning_effort']}_"
-                f"{'sum' if config_info['use_summary'] else 'nosum'}"
+                f"{'summary' if config_info['use_summary'] else 'nosumm'}_"
+                f"{'crossover' if config_info['crossover'] else ''}"
             )
         except Exception as e:
             print(f"Error reading config in {exp_dir}: {e}")
@@ -334,8 +336,9 @@ def plot_consolidated_novelty_and_length(
             label = (
                 f"{'Strat' if config['creative_strategies'] else 'No-Strat'} | "
                 f"{config['evolution_mode']} | "
-                f"{config['reasoning_effort']} | "
-                f"{'Sum' if config['use_summary'] else 'No-Sum'}"
+                f"reasoning-{config['reasoning_effort']} | "
+                f"{'Sum' if config['use_summary'] else 'No-Sum'} |"
+                f"{' Crossover' if config['crossover'] else ''}"
             )
 
             # Choose color and line style
@@ -428,7 +431,8 @@ def plot_consolidated_novelty_and_length(
                 f"{'Strat' if config['creative_strategies'] else 'No-Strat'} | "
                 f"{config['evolution_mode']} | "
                 f"{config['reasoning_effort']} | "
-                f"{'Sum' if config['use_summary'] else 'No-Sum'}"
+                f"{'Sum' if config['use_summary'] else 'No-Sum'} |"
+                f"{' Crossover' if config['crossover'] else ''}"
             )
 
             # Choose color and line style
@@ -806,7 +810,7 @@ def plot_strategy_metrics(configs: Dict[str, Dict[str, Any]], output_dir: str):
 def plot_normalized_comparison(configs: Dict[str, Dict[str, Any]], output_dir: str):
     """
     Create a bar chart showing percentage increase over baseline configuration.
-    This makes relative differences more apparent.
+    Simplified version with consistent colors and improved spacing.
     """
     # Extract final generation metrics for each configuration
     domain_metrics = defaultdict(list)
@@ -826,10 +830,10 @@ def plot_normalized_comparison(configs: Dict[str, Dict[str, Any]], output_dir: s
 
             # Create a more readable configuration label
             config_label = (
-                f"{'Strat' if config['creative_strategies'] else 'No-Strat'}, "
-                f"{config['evolution_mode']}, "
-                f"{config['reasoning_effort']}, "
-                f"{'Sum' if config['use_summary'] else 'No-Sum'}"
+                f"{'Strategies ON' if config['creative_strategies'] else 'No Strategies'}\n"
+                f"{config['evolution_mode'].capitalize()}, {config['reasoning_effort'].capitalize()}\n"
+                f"{'Summary ON' if config['use_summary'] else 'No Summary'}"
+                f"{', Crossover' if config['crossover'] else ''}"
             )
 
             domain_metrics[domain].append(
@@ -853,6 +857,7 @@ def plot_normalized_comparison(configs: Dict[str, Dict[str, Any]], output_dir: s
         # Set the baseline as the worst-performing configuration
         baseline = metrics[0]["mean_novelty"]
         baseline_label = metrics[0]["config_label"]
+        baseline_novelty = metrics[0]["mean_novelty"]
 
         # Calculate percentage increases
         for m in metrics:
@@ -861,79 +866,99 @@ def plot_normalized_comparison(configs: Dict[str, Dict[str, Any]], output_dir: s
         # Sort by percentage increase (highest first for visualization)
         metrics.sort(key=lambda x: x["percent_increase"], reverse=True)
 
-        # Set up the plot
-        fig, ax = plt.subplots(figsize=(14, 8))
+        # Set up the plot with a clean style
+        plt.style.use("seaborn-v0_8-whitegrid")
+        fig, ax = plt.subplots(figsize=(12, 7))
 
         # Extract data for plotting
         config_labels = [m["config_label"] for m in metrics]
         percent_increases = [m["percent_increase"] for m in metrics]
+        novelty_values = [m["mean_novelty"] for m in metrics]
 
-        # Add absolute values to the config labels
-        for i, m in enumerate(metrics):
-            config_labels[i] = f"{config_labels[i]}\n(novelty: {m['mean_novelty']:.4f})"
+        # Use a single consistent color for all bars
+        bar_color = "#3498db"  # A nice blue color
 
-        # Create bars
+        # Create bars with improved aesthetics
         bar_positions = np.arange(len(config_labels))
         bars = ax.bar(
             bar_positions,
             percent_increases,
-            color=["green" if p > 0 else "red" for p in percent_increases],
-            edgecolor="navy",
-            alpha=0.8,
+            color=bar_color,
+            width=0.7,
+            edgecolor="none",
+            alpha=0.85,
         )
 
         # Add annotations for percentage increases
         for i, value in enumerate(percent_increases):
             ax.annotate(
                 f"{value:.1f}%",
-                xy=(i, value + 0.5),
+                xy=(i, value + 0.1),  # Reduced spacing
                 ha="center",
                 va="bottom",
-                fontsize=10,
+                fontsize=11,
                 fontweight="bold",
+                color="#333333",
             )
 
-            # Add sample count
+            # Add novelty value with minimal spacing
             ax.annotate(
-                f"n={metrics[i]['sample_count']}",
-                xy=(i, value / 2),  # Place in middle of bar
+                f"novelty: {novelty_values[i]:.4f}",
+                xy=(i, value / 3),  # Place in lower part of bar
                 ha="center",
                 va="center",
                 fontsize=9,
-                color="white" if value > 10 else "black",  # Ensure readability
+                color="white" if value > 5 else "#333333",  # Ensure readability
             )
 
         # Add baseline indicator
-        ax.axhline(y=0, color="black", linestyle="-", linewidth=1)
-        ax.annotate(
-            f"Baseline: {baseline_label} (novelty: {baseline:.4f})",
-            xy=(0, -5),
-            ha="left",
-            va="top",
+        ax.axhline(y=0, color="#555555", linestyle="-", linewidth=1, alpha=0.5)
+
+        # Add baseline text at bottom
+        baseline_text = f"Baseline: {baseline_label.replace('\n', ' ')} (novelty: {baseline_novelty:.4f})"
+        fig.text(
+            0.5,
+            0.01,
+            baseline_text,
+            ha="center",
+            va="bottom",
             fontsize=10,
-            fontweight="bold",
-            color="red",
+            color="#e74c3c",
+            style="italic",
         )
 
-        # Label the axes
-        ax.set_xlabel("Configuration", fontsize=12)
-        ax.set_ylabel("% Increase in Novelty over Baseline", fontsize=12)
+        # Labels and title
+        ax.set_xlabel("Configuration", fontsize=12, fontweight="bold", labelpad=10)
+        ax.set_ylabel(
+            "% Improvement over Baseline", fontsize=12, fontweight="bold", labelpad=10
+        )
         ax.set_title(
-            f"Relative Improvement in Novelty - {domain.upper()} Domain", fontsize=14
+            f"Novelty Improvement - {domain.upper()} Domain",
+            fontsize=14,
+            fontweight="bold",
+            pad=15,
         )
 
         # Set x-tick positions and labels
         ax.set_xticks(bar_positions)
-        ax.set_xticklabels(config_labels, fontsize=9)
+        ax.set_xticklabels(config_labels, fontsize=10)
 
-        # Add grid for readability
-        ax.grid(axis="y", linestyle="--", alpha=0.7)
+        # Cleaner grid
+        ax.grid(axis="y", linestyle="--", alpha=0.3)
 
-        # Set y-axis to start slightly below 0 to show the baseline annotation
-        ax.set_ylim(bottom=-7)
+        # Remove top and right spines for cleaner look
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_alpha(0.3)
+        ax.spines["bottom"].set_alpha(0.3)
+
+        # Set y-axis to start at 0
+        max_value = max(percent_increases) if percent_increases else 0
+        y_margin = max_value * 0.1  # 10% margin
+        ax.set_ylim(bottom=-1, top=max_value + y_margin)
 
         # Adjust layout and save
-        plt.tight_layout()
+        plt.tight_layout(rect=[0, 0.05, 1, 0.98])  # Make room for baseline annotation
 
         output_path = os.path.join(output_dir, f"{domain}_normalized_comparison.png")
         plt.savefig(output_path, dpi=300, bbox_inches="tight")
@@ -1080,50 +1105,6 @@ def plot_strategy_artifact_counts(configs: Dict[str, Dict[str, Any]], output_dir
         print(f"Strategy artifact count plot for {domain} saved to {output_path}")
         plt.close()
 
-        # Also create a pie chart alternative
-        fig, ax = plt.subplots(figsize=(10, 10))
-
-        # Create pie chart
-        wedges, texts, autotexts = ax.pie(
-            counts,
-            labels=None,
-            autopct="",
-            colors=colors,
-            wedgeprops={"width": 0.6, "edgecolor": "w", "linewidth": 1},
-            startangle=90,
-        )
-
-        # Add percentage and count labels inside wedges
-        for i, autotext in enumerate(autotexts):
-            count = counts[i]
-            percentage = (count / total_count) * 100
-            autotext.set_text(f"{percentage:.1f}%\n({count})")
-
-        # Add legend outside the pie
-        ax.legend(
-            wedges,
-            strategy_names,
-            title="Creative Strategies",
-            loc="center left",
-            bbox_to_anchor=(1, 0, 0.5, 1),
-        )
-
-        ax.set_title(
-            f"Artifacts by Creative Strategy - {domain.upper()} Domain\n{experiment_text}",
-            fontsize=14,
-            fontweight="bold",
-            pad=15,
-        )
-
-        plt.tight_layout()
-
-        pie_output_path = os.path.join(
-            output_dir, f"{domain}_strategy_artifact_pie.png"
-        )
-        plt.savefig(pie_output_path, dpi=300, bbox_inches="tight")
-        print(f"Strategy artifact pie chart for {domain} saved to {pie_output_path}")
-        plt.close()
-
 
 # Add this to the main function
 def main():
@@ -1155,206 +1136,10 @@ def main():
 
     # Create plots
     plot_configuration_comparison(configs, output_dir)
-    plot_normalized_comparison(configs, output_dir)  # Add this line
+    plot_normalized_comparison(configs, output_dir)
     plot_consolidated_novelty_and_length(configs, output_dir)
     plot_novelty_over_generations(configs, output_dir)
     plot_strategy_metrics(configs, output_dir)
-
-    print(f"Analysis complete. Results saved to {output_dir}")
-
-
-def plot_normalized_comparison(configs: Dict[str, Dict[str, Any]], output_dir: str):
-    """
-    Create a bar chart showing percentage increase over baseline configuration.
-    Simplified version with consistent colors and improved spacing.
-    """
-    # Extract final generation metrics for each configuration
-    domain_metrics = defaultdict(list)
-
-    for config_key, experiments in configs.items():
-        # Get sample configuration
-        config = experiments[0]["config"]
-        domain = config["domain"]
-
-        # Aggregate metrics
-        agg_metrics = aggregate_metrics_by_generation(experiments)
-
-        # Get the final generation metrics
-        if agg_metrics:
-            final_gen = max(agg_metrics.keys())
-            metrics = agg_metrics[final_gen]
-
-            # Create a more readable configuration label
-            config_label = (
-                f"{'Strategies ON' if config['creative_strategies'] else 'No Strategies'}\n"
-                f"{config['evolution_mode'].capitalize()}, {config['reasoning_effort'].capitalize()}\n"
-                f"{'Summary ON' if config['use_summary'] else 'No Summary'}"
-            )
-
-            domain_metrics[domain].append(
-                {
-                    "config": config,
-                    "config_label": config_label,
-                    "mean_novelty": metrics["mean_novelty"],
-                    "std_novelty": metrics.get("std_novelty", 0),
-                    "sample_count": metrics.get("sample_count", 1),
-                }
-            )
-
-    # Create a plot for each domain
-    for domain, metrics in domain_metrics.items():
-        if not metrics:
-            continue
-
-        # Sort by mean novelty (ascending to find baseline)
-        metrics.sort(key=lambda x: x["mean_novelty"])
-
-        # Set the baseline as the worst-performing configuration
-        baseline = metrics[0]["mean_novelty"]
-        baseline_label = metrics[0]["config_label"]
-        baseline_novelty = metrics[0]["mean_novelty"]
-
-        # Calculate percentage increases
-        for m in metrics:
-            m["percent_increase"] = ((m["mean_novelty"] - baseline) / baseline) * 100
-
-        # Sort by percentage increase (highest first for visualization)
-        metrics.sort(key=lambda x: x["percent_increase"], reverse=True)
-
-        # Set up the plot with a clean style
-        plt.style.use("seaborn-v0_8-whitegrid")
-        fig, ax = plt.subplots(figsize=(12, 7))
-
-        # Extract data for plotting
-        config_labels = [m["config_label"] for m in metrics]
-        percent_increases = [m["percent_increase"] for m in metrics]
-        novelty_values = [m["mean_novelty"] for m in metrics]
-
-        # Use a single consistent color for all bars
-        bar_color = "#3498db"  # A nice blue color
-
-        # Create bars with improved aesthetics
-        bar_positions = np.arange(len(config_labels))
-        bars = ax.bar(
-            bar_positions,
-            percent_increases,
-            color=bar_color,
-            width=0.7,
-            edgecolor="none",
-            alpha=0.85,
-        )
-
-        # Add annotations for percentage increases
-        for i, value in enumerate(percent_increases):
-            ax.annotate(
-                f"{value:.1f}%",
-                xy=(i, value + 0.1),  # Reduced spacing
-                ha="center",
-                va="bottom",
-                fontsize=11,
-                fontweight="bold",
-                color="#333333",
-            )
-
-            # Add novelty value with minimal spacing
-            ax.annotate(
-                f"novelty: {novelty_values[i]:.4f}",
-                xy=(i, value / 3),  # Place in lower part of bar
-                ha="center",
-                va="center",
-                fontsize=9,
-                color="white" if value > 5 else "#333333",  # Ensure readability
-            )
-
-        # Add baseline indicator
-        ax.axhline(y=0, color="#555555", linestyle="-", linewidth=1, alpha=0.5)
-
-        # Add baseline text at bottom
-        baseline_text = f"Baseline: {baseline_label.replace('\n', ' ')} (novelty: {baseline_novelty:.4f})"
-        fig.text(
-            0.5,
-            0.01,
-            baseline_text,
-            ha="center",
-            va="bottom",
-            fontsize=10,
-            color="#e74c3c",
-            style="italic",
-        )
-
-        # Labels and title
-        ax.set_xlabel("Configuration", fontsize=12, fontweight="bold", labelpad=10)
-        ax.set_ylabel(
-            "% Improvement over Baseline", fontsize=12, fontweight="bold", labelpad=10
-        )
-        ax.set_title(
-            f"Novelty Improvement - {domain.upper()} Domain",
-            fontsize=14,
-            fontweight="bold",
-            pad=15,
-        )
-
-        # Set x-tick positions and labels
-        ax.set_xticks(bar_positions)
-        ax.set_xticklabels(config_labels, fontsize=10)
-
-        # Cleaner grid
-        ax.grid(axis="y", linestyle="--", alpha=0.3)
-
-        # Remove top and right spines for cleaner look
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.spines["left"].set_alpha(0.3)
-        ax.spines["bottom"].set_alpha(0.3)
-
-        # Set y-axis to start at 0
-        max_value = max(percent_increases) if percent_increases else 0
-        y_margin = max_value * 0.1  # 10% margin
-        ax.set_ylim(bottom=-1, top=max_value + y_margin)
-
-        # Adjust layout and save
-        plt.tight_layout(rect=[0, 0.05, 1, 0.98])  # Make room for baseline annotation
-
-        output_path = os.path.join(output_dir, f"{domain}_normalized_comparison.png")
-        plt.savefig(output_path, dpi=300, bbox_inches="tight")
-        print(f"Normalized comparison plot for {domain} saved to {output_path}")
-        plt.close()
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Analyze ablation study results")
-    parser.add_argument(
-        "study_dir", type=str, help="Path to the ablation study directory"
-    )
-    parser.add_argument(
-        "--output",
-        "-o",
-        type=str,
-        default=None,
-        help="Output directory for plots (default: study_dir/analysis)",
-    )
-    args = parser.parse_args()
-
-    # Set up output directory
-    output_dir = (
-        args.output if args.output else os.path.join(args.study_dir, "analysis")
-    )
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Load metrics from all experiments
-    configs = load_study_metrics(args.study_dir)
-
-    if not configs:
-        print(f"No valid configurations found in {args.study_dir}")
-        return
-
-    # Create plots
-    # plot_configuration_comparison(configs, output_dir)
-    # plot_normalized_comparison(configs, output_dir)
-    # plot_consolidated_novelty_and_length(configs, output_dir)
-    # plot_novelty_over_generations(configs, output_dir)
-    # plot_strategy_metrics(configs, output_dir)
-    plot_strategy_artifact_counts(configs, output_dir)
 
     print(f"Analysis complete. Results saved to {output_dir}")
 
