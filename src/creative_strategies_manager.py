@@ -23,14 +23,14 @@ class CreativityStrategyManager:
         Args:
             json_file_path: Path to the JSON file with strategies
         """
-        try:
-            with open(json_file_path, "r") as f:
-                data = json.load(f)
-                self.strategies = data.get("strategies", [])
-                print(f"Loaded {len(self.strategies)} creativity strategies")
-        except (json.JSONDecodeError, FileNotFoundError) as e:
-            print(f"Error loading strategies: {e}")
-            self.strategies = []
+        # try:
+        with open(json_file_path, "r") as f:
+            data = json.load(f)
+            self.strategies = data.get("strategies", [])
+            print(f"Loaded {len(self.strategies)} creativity strategies")
+        # except (json.JSONDecodeError, FileNotFoundError) as e:
+        #     print(f"Error loading strategies: {e}")
+        #     self.strategies = []
 
     def get_strategy_by_name(self, name: str) -> Optional[Dict]:
         """

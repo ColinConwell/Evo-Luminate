@@ -11,13 +11,13 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional, Union
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from population import Population
-from artifacts import Artifact, ShaderArtifact
+from .population import Population
+from .artifacts import Artifact, ShaderArtifact, GameIdeaArtifact
 
-from models import llm_client
-from creative_strategies_manager import CreativityStrategyManager
+from .models import llm_client
+from .creative_strategies_manager import CreativityStrategyManager
 
-manager = CreativityStrategyManager("creativity_strategies.json")
+manager = CreativityStrategyManager("src/creativity_strategies.json")
 
 
 def artifacts_to_string(artifacts):
@@ -31,9 +31,13 @@ def artifacts_to_string(artifacts):
 def construct_evolution_prompt(
     artifacts, user_prompt, summary, evolution_mode="variation", creative_strategy=None
 ):
+    if summary is None and evolution_mode == "creation":
+        raise ValueError("Summary is required for evolution_mode=creation")
+
     # evolution_mode can be 'variation' or 'creation'
     prompt = f"I'm exploring diverse possibilities for {user_prompt}s.\n\n"
-    prompt += f"Summary of the current population: {summary}\n\n"
+    if summary:
+        prompt += f"Summary of the current population: {summary}\n\n"
 
     if evolution_mode == "variation":
         prompt += f"Make this {artifacts[0].name} significantly less like what is done before:\n\n"
@@ -80,6 +84,27 @@ def save_novelty_metrics(
         k_neighbors=k_neighbors,
         return_distances=True,
     )
+
+    # Group artifacts by creative strategy
+    strategy_to_distances = {}
+
+    all_artifacts = population.get_all()
+    for i, artifact in enumerate(all_artifacts):
+        strategy_name = artifact.metadata.get("creative_strategy_name", "None")
+        if strategy_name not in strategy_to_distances:
+            strategy_to_distances[strategy_name] = []
+        strategy_to_distances[strategy_name].append(avg_distances[i].item())
+
+    # Calculate average novelty per strategy
+    strategy_metrics = {}
+    for strategy, distances in strategy_to_distances.items():
+        if distances:
+            strategy_metrics[strategy] = {
+                "count": len(distances),
+                "avg_novelty": np.mean(distances),
+                "std_novelty": np.std(distances),
+            }
+
     novelty_metrics = {
         "generation": generation,
         "timestamp": datetime.now().isoformat(),
@@ -88,6 +113,7 @@ def save_novelty_metrics(
         "mean_genome_length": np.mean(
             [len(artifact.genome) for artifact in population.get_all()]
         ),
+        "strategy_metrics": strategy_metrics,
     }
 
     metrics_path = os.path.join(output_dir, "novelty_metrics.jsonl")
@@ -98,18 +124,15 @@ def save_novelty_metrics(
 def get_artifact_class(config: Dict[str, Any]) -> Artifact:
     artifact_class_name = config.get("artifact_class", "ShaderArtifact")
     if artifact_class_name == "ShaderArtifact":
-        from artifacts import ShaderArtifact
-
         return ShaderArtifact
     elif artifact_class_name == "GameIdeaArtifact":
-        from artifacts import GameIdeaArtifact
-
         return GameIdeaArtifact
 
 
 def run_evolution_experiment(
     output_dir: str, config: Dict[str, Any] = None
 ) -> Population:
+    os.makedirs(output_dir, exist_ok=True)
     np.random.seed(config["random_seed"])
     torch.manual_seed(config["random_seed"])
 
@@ -136,7 +159,9 @@ def run_evolution_experiment(
     def create_artifact():
         try:
             return ArtifactClass.create_from_prompt(
-                prompt=config["prompt"], output_dir=artifacts_dir
+                prompt=config["prompt"],
+                output_dir=artifacts_dir,
+                reasoning_effort=config["reasoning_effort"],
             )
         except Exception as e:
             logging.error(f"Failed to create artifact: {e}")
@@ -152,6 +177,13 @@ def run_evolution_experiment(
             artifact = future.result()
             if artifact:
                 initial_artifacts.append(artifact)
+
+    # if there are errors, fill in the rest with random parents
+    while len(initial_artifacts) < config["initial_population_size"]:
+        parent = random.choice(initial_artifacts)
+        child = create_artifact()
+        if child:
+            initial_artifacts.append(child)
 
     population = Population()
     population.add_all(initial_artifacts)
@@ -169,13 +201,21 @@ def run_evolution_experiment(
         # Generate new artifacts
         new_artifacts = []
 
-        summary = complete_prompt(
-            f"Create a concise overview of the collection of {ArtifactClass.name}s including specific goals and methods: {artifacts_to_string(population.get_all())}",
-            model="openai:gpt-4o-mini",
-        )
-        print("-" * 80)
-        print(summary)
-        print("-" * 80)
+        summary = None
+        if config["use_summary"]:
+            summary = complete_prompt(
+                f"Create a concise overview of the collection of {ArtifactClass.name}s including specific goals and methods: {artifacts_to_string(population.get_all())}",
+                model="openai:gpt-4o-mini",
+            )
+            print("-" * 80)
+            print(summary)
+            print("-" * 80)
+
+            summary_path = os.path.join(output_dir, "summaries.jsonl")
+            with open(summary_path, "a") as f:
+                f.write(
+                    json.dumps({"summary": summary, "generation": generation}) + "\n"
+                )
 
         to_evolve = random.sample(
             population.get_all(), config["children_per_generation"]
@@ -185,7 +225,7 @@ def run_evolution_experiment(
         def evolve_artifact(artifact):
             try:
                 creative_strategy = (
-                    manager.to_prompt(manager.get_random_strategy())
+                    manager.get_random_strategy()
                     if config["use_creative_strategies"]
                     else None
                 )
@@ -194,11 +234,21 @@ def run_evolution_experiment(
                     user_prompt=config["prompt"],
                     summary=summary,
                     evolution_mode=config["evolution_mode"],
-                    creative_strategy=creative_strategy,
+                    creative_strategy=(
+                        manager.to_prompt(creative_strategy)
+                        if creative_strategy
+                        else None
+                    ),
                 )
-                return ArtifactClass.create_from_prompt(
-                    prompt=evolution_prompt, output_dir=artifacts_dir
+                new_artifact = ArtifactClass.create_from_prompt(
+                    prompt=evolution_prompt,
+                    output_dir=artifacts_dir,
+                    reasoning_effort=config["reasoning_effort"],
                 )
+                new_artifact.metadata["creative_strategy_name"] = (
+                    creative_strategy["name"] if creative_strategy else None
+                )
+                return new_artifact
             except Exception as e:
                 logging.error(f"Failed to create artifact: {e}")
                 return None
@@ -213,6 +263,13 @@ def run_evolution_experiment(
                 new_artifact = future.result()
                 if new_artifact:
                     new_artifacts.append(new_artifact)
+
+        # if there are errors, fill in the rest.
+        while len(new_artifacts) < config["children_per_generation"]:
+            parent = random.choice(population.get_all())
+            child = evolve_artifact(parent)
+            if child:
+                new_artifacts.append(child)
 
         # Add new artifacts to population
         population.add_all(new_artifacts)
@@ -260,42 +317,3 @@ def run_evolution_experiment(
     logging.info("Experiment complete. Results saved to %s", output_dir)
 
     return population
-
-
-if __name__ == "__main__":
-    # Create a timestamped directory for this run
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = os.path.join("results", f"run_{timestamp}")
-    os.makedirs(output_dir, exist_ok=True)
-
-    # run_evolution_experiment(
-    #     output_dir=output_dir,
-    #     config={
-    #         "random_seed": 42,
-    #         "prompt": "Create an interesting shader",
-    #         "initial_population_size": 12,
-    #         "population_size": 12,
-    #         "children_per_generation": 6,
-    #         "num_generations": 20,
-    #         "k_neighbors": 3,
-    #         "max_workers": 4,  # Control parallelism level
-    #         "artifact_class": "ShaderArtifact",  # Default to ShaderArtifact
-    #         "use_creative_strategies": True,
-    #     },
-    # )
-    run_evolution_experiment(
-        output_dir=output_dir,
-        config={
-            "random_seed": 42,
-            "prompt": "a creative variation of the game snake",
-            "initial_population_size": 12,
-            "population_size": 12,
-            "children_per_generation": 6,
-            "num_generations": 20,
-            "k_neighbors": 3,
-            "max_workers": 4,  # Control parallelism level
-            "artifact_class": "GameIdeaArtifact",  # Default to ShaderArtifact
-            "evolution_mode": "creation",
-            "use_creative_strategies": True,
-        },
-    )

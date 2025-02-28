@@ -1,17 +1,12 @@
 import os
 import json
-import uuid
-import time
-import subprocess
-import logging
 import torch
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Tuple, Union
 from datetime import datetime
 
-# from Genomes import Genome, ShaderGenome, IdeaGenome, PromptGenome
-from artifacts import Artifact, ShaderArtifact
+from .artifacts import Artifact, ShaderArtifact
 
 
 class Population:

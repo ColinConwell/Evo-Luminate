@@ -8,12 +8,9 @@ from enum import Enum
 import torch
 from typing import List, Dict, Any, Optional, Union
 
-# from evolution4 import generate_evolve_ideas
-from shaderToImage import shader_to_image
-
-# Global LLM client
-from models import llm_client, text_embedder, image_embedder
-from utils import extractCode
+from .shaderToImage import shader_to_image
+from .models import llm_client, text_embedder, image_embedder
+from .utils import extractCode
 
 defaultModel = "openai:o3-mini"
 # defaultModel = "openai:gpt-4o-mini"

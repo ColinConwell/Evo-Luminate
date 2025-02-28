@@ -18,7 +18,7 @@ def shader_to_image(code, image_path, width, height, uniforms={}):
     input_json = json.dumps(spec)
     try:
         subprocess.run(
-            ["node", "render-shaders/render-shaders.js", image_path],
+            ["node", "src/render-shaders/render-shaders.js", image_path],
             input=input_json,
             text=True,
             check=True,
