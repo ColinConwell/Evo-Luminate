@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Tuple, Union
 from datetime import datetime
 
-from .artifacts import Artifact, ShaderArtifact
+from .artifacts import Artifact
 
 
 class Population:

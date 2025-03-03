@@ -28,7 +28,9 @@ function renderShader(spec, outPath) {
     // Create a draw command with a full-screen triangle.
     const draw = regl({
       frag: spec.fragmentShader,
-      vert: `
+      vert:
+        spec.vertexShader ??
+        `
         precision mediump float;
         attribute vec2 position;
         varying vec2 uv;

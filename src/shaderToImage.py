@@ -5,12 +5,14 @@ import json
 import logging
 
 
-def shader_to_image(code, image_path, width, height, uniforms={}):
+def shader_to_image(fragment_code, vertex_code, image_path, width, height, uniforms={}):
+    print(f"Rendering shader to {image_path}")
     """
     Calls the Node.js renderer ("render-shaders.js") to render self.code.
     """
     spec = {
-        "fragmentShader": code,
+        "fragmentShader": fragment_code,
+        "vertexShader": vertex_code,
         "width": width,
         "height": height,
         "uniforms": uniforms,

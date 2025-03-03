@@ -10,12 +10,14 @@ import torch
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Union
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import traceback
 
 from .population import Population
-from .artifacts import Artifact, ShaderArtifact, GameIdeaArtifact, get_artifact_class
+from .artifacts import Artifact, get_artifact_class
 
 from .models import llm_client
 from .creative_strategies_manager import CreativityStrategyManager
+from .utils import load_image_path_base64
 
 manager = CreativityStrategyManager("src/creativity_strategies.json")
 
@@ -34,8 +36,10 @@ def construct_evolution_prompt(
     if summary is None and evolution_mode == "creation":
         raise ValueError("Summary is required for evolution_mode=creation")
 
-    # evolution_mode can be 'variation' or 'creation'
-    prompt = f"I'm exploring diverse possibilities for {user_prompt}s.\n\n"
+    prompt = ""
+    if len(user_prompt):
+        prompt = f"I'm exploring diverse possibilities for {user_prompt}s.\n\n"
+
     if summary:
         prompt += f"Summary of the current population: {summary}\n\n"
 
@@ -55,8 +59,10 @@ def construct_evolution_prompt(
 
 
 def construct_crossover_prompt(artifacts, user_prompt, summary, creative_strategy=None):
-    prompt = f"I'm exploring diverse possibilities for {user_prompt}s.\n\n"
-    prompt += f"Combine these {artifacts[0].name}s to create a new {artifacts[0].name} that is significantly different from what is done before"
+    prompt = ""
+    if len(user_prompt):
+        prompt = f"I'm exploring diverse possibilities for {user_prompt}s.\n\n"
+    prompt += f"Combine these {artifacts[0].name}s to create a new {artifacts[0].name}"
     if summary:
         prompt += f"Summary of the current population: {summary}\n\n"
     for i, artifact in enumerate(artifacts):
@@ -64,6 +70,27 @@ def construct_crossover_prompt(artifacts, user_prompt, summary, creative_strateg
         prompt += f"{artifact.genome}\n\n"
     if creative_strategy:
         prompt += f"\n{creative_strategy}\n"
+    return prompt
+
+
+def construct_repair_prompt(
+    artifact, user_prompt, summary, evolution_mode, creative_strategy
+):
+    prompt = f'Improve this {artifact.name} to be more like "{user_prompt}"\n'
+
+    prompt += (
+        f"once it satisfies the goals make it novel from what has been done before:\n"
+    )
+    if summary:
+        prompt += f"Summary of the current population: {summary}\n\n"
+
+    prompt += f"Current {artifact.name}:\n\n"
+    prompt += f"{artifact.genome}\n\n"
+    prompt += f"A render of the current SDF is attached. Examine it for any issues and fix them"
+
+    # if creative_strategy:
+    #     prompt += f"\n{creative_strategy}\n"
+
     return prompt
 
 
@@ -156,9 +183,10 @@ def create_initial_population(config, artifacts_dir, ArtifactClass):
                 prompt=config["prompt"],
                 output_dir=artifacts_dir,
                 reasoning_effort=config["reasoning_effort"],
+                image_url=None,
             )
         except Exception as e:
-            logging.error(f"Failed to create artifact: {e}")
+            logging.error(f"Failed to create artifact: {e}\n{traceback.format_exc()}")
             return None
 
     with ThreadPoolExecutor(max_workers=config.get("max_workers", 4)) as executor:
@@ -178,12 +206,20 @@ def create_initial_population(config, artifacts_dir, ArtifactClass):
             logging.error("Failed to create any initial artifacts")
             raise RuntimeError("Could not create initial population")
 
-        parent = random.choice(initial_artifacts)
         child = create_artifact()
         if child:
             initial_artifacts.append(child)
 
     return initial_artifacts
+
+
+def load_artifact_image(artifact: Artifact) -> Optional[str]:
+    image_url = (
+        random.choice(artifact.phenome)
+        if isinstance(artifact.phenome, list)
+        else artifact.phenome
+    )
+    return load_image_path_base64(image_url)
 
 
 def evolve_population(population, config, artifacts_dir, ArtifactClass, summary=None):
@@ -218,18 +254,27 @@ def evolve_population(population, config, artifacts_dir, ArtifactClass, summary=
                     evolution_mode=config["evolution_mode"],
                     creative_strategy=creative_strategy_prompt,
                 )
-
+                # evolution_prompt = construct_repair_prompt(
+                #     artifact=artifact,
+                #     user_prompt=config["prompt"],
+                #     summary=summary,
+                #     evolution_mode=config["evolution_mode"],
+                #     creative_strategy=creative_strategy_prompt,
+                # )
             new_artifact = ArtifactClass.create_from_prompt(
                 prompt=evolution_prompt,
                 output_dir=artifacts_dir,
                 reasoning_effort=config["reasoning_effort"],
+                image_url=None,
+                # image_url=(load_artifact_image(artifact)),
+                # if config["use_images"] else None
             )
             new_artifact.metadata["creative_strategy_name"] = (
                 creative_strategy["name"] if creative_strategy else None
             )
             return new_artifact
         except Exception as e:
-            logging.error(f"Failed to create artifact: {e}")
+            logging.error(f"Failed to create artifact: {e}\n{traceback.format_exc()}")
             return None
 
     with ThreadPoolExecutor(max_workers=config.get("max_workers", 4)) as executor:

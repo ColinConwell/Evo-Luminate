@@ -1,0 +1,15 @@
+{
+  "name": "sdf-renderer",
+  "version": "1.0.0",
+  "description": "Node.js SDF Renderer",
+  "main": "sdf-renderer.js",
+  "type": "module",
+  "scripts": {
+    "start": "node sdf-renderer.js",
+    "render": "node sdf-renderer.js"
+  },
+  "dependencies": {
+    "three": "^0.160.0",
+    "canvas": "^2.11.2"
+  }
+}
