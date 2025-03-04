@@ -49,10 +49,21 @@ def parse_arguments():
     parser.add_argument(
         "--max_workers", type=int, default=5, help="Maximum number of parallel workers"
     )
+
+    # Valid artifact classes
+    VALID_ARTIFACT_CLASSES = [
+        "ShaderArtifact",
+        "GameIdeaArtifact",
+        "SdfArtifact",
+        "GaArtifact",
+        "ImageGenArtifact",
+    ]
+
     parser.add_argument(
         "--artifact_class",
         type=str,
         default="SdfArtifact",
+        choices=VALID_ARTIFACT_CLASSES,
         help="Class of artifact to evolve",
     )
     parser.add_argument(
@@ -89,6 +100,9 @@ if __name__ == "__main__":
 
     # Create a timestamped directory for this run
     output_dir = os.path.join("results", args.output_name)
+    if os.path.exists(output_dir):
+        print(f"Output directory {output_dir} already exists")
+        exit(1)
 
     # Run the experiment with the parsed arguments
     run_evolution_experiment(

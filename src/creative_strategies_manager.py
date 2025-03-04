@@ -86,7 +86,8 @@ class CreativityStrategyManager:
         # Build the prompt
         # prompt = f"# Creative Thinking Task: {strategy_dict['name']}\n\n"
 
-        prompt = f"Creative Strategy: \n{strategy_dict['description']}\n\n"
+        # prompt = f"Creative Strategy: \n{strategy_dict['description']}\n\n"
+        prompt = ""
         if include_theory:
             prompt += f"## Theory Base\n{strategy_dict['theory_base']}\n\n"
 
@@ -94,7 +95,8 @@ class CreativityStrategyManager:
 
         # Add operations as numbered steps
         for i, operation in enumerate(strategy_dict["operations"]):
-            prompt += f"{i+1}. **{operation['name']}**: {operation['instruction']}\n"
+            # prompt += f"{i+1}. **{operation['name']}**: {operation['instruction']}\n"
+            prompt += f"{i+1}. {operation['instruction']}\n"
 
         prompt += "\n"
 
@@ -246,7 +248,7 @@ class CreativityStrategyManager:
 
 # Example usage
 if __name__ == "__main__":
-    manager = CreativityStrategyManager("creativity_strategies.json")
+    manager = CreativityStrategyManager("src/creativity_strategies.json")
 
     # Get a specific strategy
     # replacement = manager.get_strategy_by_name("Replacement Template")

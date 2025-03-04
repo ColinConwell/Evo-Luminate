@@ -47,7 +47,8 @@ def plot_novelty_metrics(metrics_list: List[Dict[str, Any]], output_path: str = 
     # min_novelty = [m.get("min_novelty", 0) for m in metrics_list]
 
     # Create figure with primary y-axis
-    fig, ax1 = plt.subplots(figsize=(12, 7))
+    # fig, ax1 = plt.subplots(figsize=(12, 7))
+    fig, ax1 = plt.subplots(figsize=(8, 6))
 
     # Plot mean novelty on primary y-axis
     color = "blue"

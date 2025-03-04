@@ -4,6 +4,7 @@ from .ShaderArtifact import ShaderArtifact
 from .GameIdeaArtifact import GameIdeaArtifact
 from .SdfArtifact import SdfArtifact
 from .Ga import GaArtifact
+from .ImageGen import ImageGenArtifact
 
 
 def get_artifact_class(config: Dict[str, Any]) -> Artifact:
@@ -17,5 +18,7 @@ def get_artifact_class(config: Dict[str, Any]) -> Artifact:
         return SdfArtifact
     elif artifact_class_name == "GaArtifact":
         return GaArtifact
+    elif artifact_class_name == "ImageGenArtifact":
+        return ImageGenArtifact
     else:
         raise ValueError(f"Unknown artifact class: {artifact_class_name}")

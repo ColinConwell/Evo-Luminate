@@ -15,6 +15,10 @@ response = llm_client.chat.completions.create(
     messages=[{"role": "user", "content": generation_prompt}],
     # response_format={"type": "json_object"},
 )
+# response = llm_client.chat.completions.create(
+#     model="anthropic:claude-3-7-sonnet-20250219",
+#     messages=[{"role": "user", "content": generation_prompt}],
+# )
 print(response.usage, dict(response.usage))
 # print(response.choices[0].message.content)
 
