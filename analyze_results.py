@@ -7,6 +7,8 @@ from pathlib import Path
 import re
 from collections import defaultdict
 from typing import List, Dict, Any, Tuple
+import scipy.stats
+import csv
 
 
 # Removed parse_experiment_name function as we now read directly from config.json
@@ -22,7 +24,7 @@ def load_study_metrics(study_dir: str) -> Dict[str, Dict[str, Any]]:
 
     # Find all experiment directories
     exp_dirs = [d for d in os.listdir(study_path) if os.path.isdir(study_path / d)]
-
+    print("num_dirs ", len(exp_dirs))
     for exp_dir in exp_dirs:
         full_exp_dir = study_path / exp_dir
 
@@ -35,30 +37,22 @@ def load_study_metrics(study_dir: str) -> Dict[str, Dict[str, Any]]:
         try:
             with open(config_file, "r") as f:
                 config = json.load(f)
-
+            # defaultCrossover = 0.3 if config.get("artifact_class") == "website" else 0.0
+            defaultCrossover = 0.0
             # Extract the information we need
             config_info = {
-                "domain": (
-                    "shader"
-                    if config.get("artifact_class") == "ShaderArtifact"
-                    else "game"
-                ),
+                "domain": config.get("artifact_class"),
                 "creative_strategies": config.get("use_creative_strategies", False),
                 "evolution_mode": config.get("evolution_mode", "creation"),
                 "reasoning_effort": config.get("reasoning_effort", "low"),
                 "use_summary": config.get("use_summary", True),
                 "seed": config.get("random_seed", None),
-                "crossover": config.get("crossover_rate", 0.0) > 0.0,
+                "crossover": config.get("crossover_rate", defaultCrossover) > 0.0,
             }
 
             # Create a config key for grouping similar configurations (ignoring seed)
-            config_key = (
-                f"{config_info['domain']}_"
-                f"{'strat' if config_info['creative_strategies'] else 'nostrat'}_"
-                f"{config_info['evolution_mode']}_"
-                f"{config_info['reasoning_effort']}_"
-                f"{'summary' if config_info['use_summary'] else 'nosumm'}_"
-                f"{'crossover' if config_info['crossover'] else ''}"
+            config_key = "__".join(
+                [f"{k}:{v}" for k, v in config_info.items() if k != "seed"]
             )
         except Exception as e:
             print(f"Error reading config in {exp_dir}: {e}")
@@ -80,6 +74,8 @@ def load_study_metrics(study_dir: str) -> Dict[str, Dict[str, Any]]:
         # Sort by generation
         metrics_list.sort(key=lambda x: x.get("generation", 0))
 
+        if config_info["domain"] == "GameIdeaArtifact":
+            continue
         # Add to configs using config_key to group by configuration
         configs[config_key].append(
             {
@@ -90,6 +86,9 @@ def load_study_metrics(study_dir: str) -> Dict[str, Dict[str, Any]]:
             }
         )
 
+    for key in configs.keys():
+        if len(configs[key]) > 1:
+            print(len(configs[key]), key)
     print(
         f"Found {len(configs)} unique configurations across {len(exp_dirs)} experiment directories"
     )
@@ -158,952 +157,857 @@ def aggregate_metrics_by_generation(
     return result
 
 
-def plot_configuration_comparison(configs: Dict[str, Dict[str, Any]], output_dir: str):
+def plot_normalized_comparison(
+    configs: Dict[str, Dict[str, Any]],
+    output_dir: str,
+    plot_genome_length: bool = True,
+):
     """
-    Create a bar chart comparing the final novelty scores for different configurations.
-    """
-    # Extract final generation metrics for each configuration
-    final_metrics = []
+    Create a bar chart showing percentage increase in novelty from first to last generation.
+    This shows how much each configuration improved over the course of evolution.
 
+    Parameters:
+        configs: Dictionary of configuration data
+        output_dir: Directory to save plots
+        plot_genome_length: If True, also plot genome length alongside novelty
+    """
+    # Extract metrics for each configuration
+    domain_metrics = defaultdict(list)
+
+    # Track crossover settings by domain
+    domain_crossover_settings = defaultdict(set)
+
+    # First pass: collect all crossover settings for each domain
     for config_key, experiments in configs.items():
-        # Get sample configuration (they're all the same except for seed)
         config = experiments[0]["config"]
+        domain = config["domain"]
+        domain_crossover_settings[domain].add(config["crossover"])
 
-        # Aggregate metrics
-        agg_metrics = aggregate_metrics_by_generation(experiments)
+    average_start_novelty = defaultdict(list)
+    for config_key, experiments in configs.items():
+        # Get sample configuration
+        config = experiments[0]["config"]
+        domain = config["domain"]
 
-        # Get the final generation metrics
-        final_gen = max(agg_metrics.keys())
-        metrics = agg_metrics[final_gen]
+        # Check if there are multiple different crossover settings across this domain
+        multiple_crossovers = len(domain_crossover_settings[domain]) > 1
 
-        # Create a more readable configuration label
+        # Calculate novelty increase and genome length for each experiment
+        novelty_increases = []
+        genome_lengths = []
+
+        for exp in experiments:
+            metrics = exp["metrics"]
+            if not metrics or len(metrics) < 2:
+                continue
+
+            # Sort metrics by generation
+            sorted_metrics = sorted(metrics, key=lambda m: m.get("generation", 0))
+
+            # Get first and last generation novelty
+            first_gen_novelty = sorted_metrics[0].get("mean_novelty", 0)
+            last_gen_novelty = sorted_metrics[-1].get("mean_novelty", 0)
+
+            # Get last generation genome length
+            last_gen_genome_length = sorted_metrics[-1].get("mean_genome_length", 0)
+
+            # Calculate percentage increase
+            novelty_increases.append(last_gen_novelty)
+            genome_lengths.append(last_gen_genome_length)
+
+            average_start_novelty[domain].append(first_gen_novelty)
+
+        # Create a readable configuration label
         config_label = (
-            f"{config['domain']}\n"
-            f"{'Strat' if config['creative_strategies'] else 'No-Strat'}, "
-            f"{config['evolution_mode']}, "
-            f"{config['reasoning_effort']}, "
-            f"{'Sum' if config['use_summary'] else 'No-Sum'}"
+            f"{'Strategies On' if config['creative_strategies'] else 'Strategies Off'}\n"
+            f"Reasoning: {config['reasoning_effort'].capitalize()}\n"
+            f"Mode: {config['evolution_mode'].capitalize()}\n"
+            f"{'Summary On' if config['use_summary'] else 'Summary Off'}\n"
         )
 
-        final_metrics.append(
+        if multiple_crossovers:
+            config_label += f"\nCross: {config['crossover']}"
+
+        domain_metrics[domain].append(
             {
                 "config": config,
                 "config_label": config_label,
-                "mean_novelty": metrics["mean_novelty"],
-                "std_novelty": metrics["std_novelty"],
-                "sample_count": metrics["sample_count"],
+                "mean_novelty_increase": np.mean(novelty_increases)
+                / np.mean(average_start_novelty[domain]),
+                "std_novelty_increase": np.std(novelty_increases),
+                "mean_genome_length": np.mean(genome_lengths),
+                "std_genome_length": np.std(genome_lengths),
+                "sample_count": len(novelty_increases),
             }
         )
-
-    # Group by domain
-    domains = set(m["config"]["domain"] for m in final_metrics)
-    domain_metrics = {domain: [] for domain in domains}
-
-    for metrics in final_metrics:
-        domain_metrics[metrics["config"]["domain"]].append(metrics)
-
-    # Create a plot for each domain
-    for domain, metrics in domain_metrics.items():
-        # Sort by mean novelty (descending)
-        metrics.sort(key=lambda x: x["mean_novelty"], reverse=True)
-
-        # Set up the plot
-        fig, ax = plt.subplots(figsize=(14, 8))
-
-        # Extract data for plotting
-        config_labels = [m["config_label"] for m in metrics]
-        novelty_means = [m["mean_novelty"] for m in metrics]
-        novelty_stds = [m["std_novelty"] for m in metrics]
-
-        # Create bars
-        bar_positions = np.arange(len(config_labels))
-        bars = ax.bar(
-            bar_positions,
-            novelty_means,
-            yerr=novelty_stds,
-            capsize=5,
-            color="skyblue",
-            edgecolor="navy",
-            alpha=0.8,
-        )
-
-        # Add annotations for sample counts
-        for i, metrics in enumerate(metrics):
-            ax.annotate(
-                f"n={metrics['sample_count']}",
-                xy=(i, novelty_means[i] + novelty_stds[i] + 0.005),
-                ha="center",
-                va="bottom",
-                fontsize=9,
-            )
-
-        # Label the axes
-        ax.set_xlabel("Configuration", fontsize=12)
-        ax.set_ylabel("Mean Novelty", fontsize=12)
-        ax.set_title(
-            f"Comparison of Configurations - {domain.upper()} Domain", fontsize=14
-        )
-
-        # Set x-tick positions and labels
-        ax.set_xticks(bar_positions)
-        ax.set_xticklabels(config_labels, fontsize=10)
-
-        # Add grid for readability
-        ax.grid(axis="y", linestyle="--", alpha=0.7)
-
-        # Adjust layout and save
-        plt.tight_layout()
-
-        output_path = os.path.join(output_dir, f"{domain}_config_comparison.png")
-        plt.savefig(output_path, dpi=300, bbox_inches="tight")
-        print(f"Configuration comparison plot for {domain} saved to {output_path}")
-        plt.close()
-
-
-def plot_consolidated_novelty_and_length(
-    configs: Dict[str, Dict[str, Any]], output_dir: str
-):
-    """
-    Create consolidated plots for each domain with all configurations on the same chart.
-    This makes it easier to compare different configurations directly.
-    """
-    # Group configurations by domain
-    domain_configs = defaultdict(list)
-
-    for config_key, experiments in configs.items():
-        config = experiments[0]["config"]
-        domain = config["domain"]
-
-        # Aggregate metrics
-        agg_metrics = aggregate_metrics_by_generation(experiments)
-
-        # Only include if we have data
-        if agg_metrics:
-            domain_configs[domain].append(
-                {"config": config, "metrics": agg_metrics, "config_key": config_key}
-            )
-
-    # For each domain, create consolidated plots
-    for domain, configs_list in domain_configs.items():
-        # 1. Consolidated Novelty Plot
-        plt.figure(figsize=(14, 10))
-
-        # Define a color cycle for different configs
-        # More distinct colors for better separation
-        colors = [
-            "blue",
-            "red",
-            "green",
-            "purple",
-            "orange",
-            "brown",
-            "pink",
-            "gray",
-            "olive",
-            "cyan",
-        ]
-
-        # Track min/max y values for consistent axes
-        min_novelty, max_novelty = float("inf"), float("-inf")
-
-        # Create a legend mapping
-        legend_handles = []
-        legend_labels = []
-
-        # Plot each configuration
-        for i, config_data in enumerate(configs_list):
-            config = config_data["config"]
-            metrics = config_data["metrics"]
-
-            # Sort generations
-            generations = sorted(metrics.keys())
-            if not generations:
-                continue
-
-            # Extract novelty data
-            novelty_values = [metrics[g]["mean_novelty"] for g in generations]
-            novelty_stds = [metrics[g]["std_novelty"] for g in generations]
-
-            # Update min/max
-            min_novelty = min(
-                min_novelty, min([v - s for v, s in zip(novelty_values, novelty_stds)])
-            )
-            max_novelty = max(
-                max_novelty, max([v + s for v, s in zip(novelty_values, novelty_stds)])
-            )
-
-            # Create a readable label
-            label = (
-                f"{'Strat' if config['creative_strategies'] else 'No-Strat'} | "
-                f"{config['evolution_mode']} | "
-                f"reasoning-{config['reasoning_effort']} | "
-                f"{'Sum' if config['use_summary'] else 'No-Sum'} |"
-                f"{' Crossover' if config['crossover'] else ''}"
-            )
-
-            # Choose color and line style
-            color = colors[i % len(colors)]
-            linestyle = "-" if config["creative_strategies"] else "--"
-
-            # Plot the line
-            (line,) = plt.plot(
-                generations,
-                novelty_values,
-                color=color,
-                linestyle=linestyle,
-                linewidth=2,
-                label=label,
-            )
-
-            # Add error band
-            plt.fill_between(
-                generations,
-                [v - s for v, s in zip(novelty_values, novelty_stds)],
-                [v + s for v, s in zip(novelty_values, novelty_stds)],
-                color=color,
-                alpha=0.1,
-            )
-
-            # Add to legend mapping
-            legend_handles.append(line)
-            legend_labels.append(label)
-
-        # Add labels and title
-        plt.xlabel("Generation", fontsize=12)
-        plt.ylabel("Novelty Score", fontsize=12)
-        plt.title(
-            f"{domain.upper()} Domain - Novelty Across All Configurations", fontsize=14
-        )
-
-        # Add grid
-        plt.grid(True, linestyle="--", alpha=0.7)
-
-        # Add legend
-        plt.legend(
-            handles=legend_handles, labels=legend_labels, loc="best", fontsize=10
-        )
-
-        # Adjust y-axis for better comparison
-        plt.ylim([max(0, min_novelty - 0.02), max_novelty + 0.02])
-
-        plt.tight_layout()
-
-        # Save the plot
-        output_path = os.path.join(output_dir, f"{domain}_consolidated_novelty.png")
-        plt.savefig(output_path, dpi=300, bbox_inches="tight")
-        print(f"Consolidated novelty plot for {domain} saved to {output_path}")
-        plt.close()
-
-        # 2. Consolidated Genome Length Plot
-        plt.figure(figsize=(14, 10))
-
-        # Track min/max y values
-        min_length, max_length = float("inf"), float("-inf")
-
-        # Clear legend mapping
-        legend_handles = []
-        legend_labels = []
-
-        # Plot each configuration
-        for i, config_data in enumerate(configs_list):
-            config = config_data["config"]
-            metrics = config_data["metrics"]
-
-            # Sort generations
-            generations = sorted(metrics.keys())
-            if not generations:
-                continue
-
-            # Extract genome length data
-            length_values = [metrics[g]["mean_genome_length"] for g in generations]
-            length_stds = [metrics[g]["std_genome_length"] for g in generations]
-
-            # Update min/max
-            min_length = min(
-                min_length, min([v - s for v, s in zip(length_values, length_stds)])
-            )
-            max_length = max(
-                max_length, max([v + s for v, s in zip(length_values, length_stds)])
-            )
-
-            # Create a readable label
-            label = (
-                f"{'Strat' if config['creative_strategies'] else 'No-Strat'} | "
-                f"{config['evolution_mode']} | "
-                f"{config['reasoning_effort']} | "
-                f"{'Sum' if config['use_summary'] else 'No-Sum'} |"
-                f"{' Crossover' if config['crossover'] else ''}"
-            )
-
-            # Choose color and line style
-            color = colors[i % len(colors)]
-            linestyle = "-" if config["creative_strategies"] else "--"
-
-            # Plot the line
-            (line,) = plt.plot(
-                generations,
-                length_values,
-                color=color,
-                linestyle=linestyle,
-                linewidth=2,
-                label=label,
-            )
-
-            # Add error band
-            plt.fill_between(
-                generations,
-                [v - s for v, s in zip(length_values, length_stds)],
-                [v + s for v, s in zip(length_values, length_stds)],
-                color=color,
-                alpha=0.1,
-            )
-
-            # Add to legend mapping
-            legend_handles.append(line)
-            legend_labels.append(label)
-
-        # Add labels and title
-        plt.xlabel("Generation", fontsize=12)
-        plt.ylabel("Genome Length", fontsize=12)
-        plt.title(
-            f"{domain.upper()} Domain - Genome Length Across All Configurations",
-            fontsize=14,
-        )
-
-        # Add grid
-        plt.grid(True, linestyle="--", alpha=0.7)
-
-        # Add legend
-        plt.legend(
-            handles=legend_handles, labels=legend_labels, loc="best", fontsize=10
-        )
-
-        # Adjust y-axis for better comparison
-        plt.ylim([max(0, min_length - 50), max_length + 50])
-
-        plt.tight_layout()
-
-        # Save the plot
-        output_path = os.path.join(
-            output_dir, f"{domain}_consolidated_genome_length.png"
-        )
-        plt.savefig(output_path, dpi=300, bbox_inches="tight")
-        print(f"Consolidated genome length plot for {domain} saved to {output_path}")
-        plt.close()
-
-
-def plot_novelty_over_generations(configs: Dict[str, Dict[str, Any]], output_dir: str):
-    """
-    Plot novelty over generations for each configuration.
-    Group similar configurations together for comparison.
-    """
-    # Group by domain
-    domain_configs = defaultdict(list)
-
-    for config_key, experiments in configs.items():
-        # Get sample configuration
-        config = experiments[0]["config"]
-        domain = config["domain"]
-
-        # Aggregate metrics by generation
-        agg_metrics = aggregate_metrics_by_generation(experiments)
-
-        # Sort by generation
-        generations = sorted(agg_metrics.keys())
-        gen_values = [agg_metrics[g] for g in generations]
-
-        domain_configs[domain].append(
-            {"config": config, "generations": generations, "metrics": gen_values}
-        )
-
-    # Create plots for each domain
-    for domain, configs_list in domain_configs.items():
-        # 1. First plot: Core 2x2 experiments (creative strategies × reasoning effort)
-        core_configs = [
-            c
-            for c in configs_list
-            if c["config"]["evolution_mode"] == "creation"
-            and c["config"]["use_summary"]
-        ]
-
-        if core_configs:
-            fig, ax = plt.subplots(figsize=(12, 7))
-
-            for config_data in core_configs:
-                config = config_data["config"]
-                generations = config_data["generations"]
-                metrics = config_data["metrics"]
-
-                # Create label for the line
-                label = (
-                    f"{'Strat' if config['creative_strategies'] else 'No-Strat'}, "
-                    f"{config['reasoning_effort']}"
-                )
-
-                # Set line style based on configuration
-                linestyle = "-" if config["creative_strategies"] else "--"
-                color = "blue" if config["reasoning_effort"] == "high" else "green"
-
-                # Extract values to plot
-                mean_values = [m["mean_novelty"] for m in metrics]
-                std_values = [m["std_novelty"] for m in metrics]
-
-                # Plot mean with error band
-                ax.plot(
-                    generations,
-                    mean_values,
-                    label=label,
-                    linestyle=linestyle,
-                    color=color,
-                    linewidth=2,
-                )
-                ax.fill_between(
-                    generations,
-                    [m - s for m, s in zip(mean_values, std_values)],
-                    [m + s for m, s in zip(mean_values, std_values)],
-                    color=color,
-                    alpha=0.2,
-                )
-
-            # Add labels and title
-            ax.set_xlabel("Generation", fontsize=12)
-            ax.set_ylabel("Mean Novelty", fontsize=12)
-            ax.set_title(
-                f"{domain.upper()} Domain - Core Experiments (Strategies × Reasoning)",
-                fontsize=14,
-            )
-
-            # Add grid and legend
-            ax.grid(True, linestyle="--", alpha=0.7)
-            ax.legend(loc="best")
-
-            # Save the plot
-            output_path = os.path.join(output_dir, f"{domain}_core_experiments.png")
-            plt.savefig(output_path, dpi=300, bbox_inches="tight")
-            print(f"Core experiments plot for {domain} saved to {output_path}")
-            plt.close()
-
-        # 2. Second plot: Summary and Evolution Mode effects (for best configuration)
-        # For simplicity, we'll use all variations here
-        variations = [
-            c
-            for c in configs_list
-            if c["config"]["evolution_mode"] == "variation"
-            or not c["config"]["use_summary"]
-        ]
-
-        # Get the best core configuration
-        if core_configs and variations:
-            # Find best core config based on final generation novelty
-            best_core = max(
-                core_configs,
-                key=lambda c: c["metrics"][-1]["mean_novelty"] if c["metrics"] else 0,
-            )
-
-            best_config = best_core["config"]
-
-            # Plot best core config and its variations
-            fig, ax = plt.subplots(figsize=(12, 7))
-
-            # First plot the best core configuration
-            generations = best_core["generations"]
-            metrics = best_core["metrics"]
-            mean_values = [m["mean_novelty"] for m in metrics]
-            std_values = [m["std_novelty"] for m in metrics]
-
-            label = f"Best Core: Strat={best_config['creative_strategies']}, Reasoning={best_config['reasoning_effort']}"
-            ax.plot(
-                generations,
-                mean_values,
-                label=label,
-                linestyle="-",
-                color="blue",
-                linewidth=2,
-            )
-            ax.fill_between(
-                generations,
-                [m - s for m, s in zip(mean_values, std_values)],
-                [m + s for m, s in zip(mean_values, std_values)],
-                color="blue",
-                alpha=0.2,
-            )
-
-            # Now plot the variations
-            for config_data in variations:
-                config = config_data["config"]
-
-                # Create a descriptive label
-                if not config["use_summary"]:
-                    label = "No Summary"
-                    color = "red"
-                else:
-                    label = "Variation Mode"
-                    color = "green"
-
-                generations = config_data["generations"]
-                metrics = config_data["metrics"]
-                mean_values = [m["mean_novelty"] for m in metrics]
-                std_values = [m["std_novelty"] for m in metrics]
-
-                ax.plot(
-                    generations,
-                    mean_values,
-                    label=label,
-                    linestyle="--",
-                    color=color,
-                    linewidth=2,
-                )
-                ax.fill_between(
-                    generations,
-                    [m - s for m, s in zip(mean_values, std_values)],
-                    [m + s for m, s in zip(mean_values, std_values)],
-                    color=color,
-                    alpha=0.2,
-                )
-
-            # Add labels and title
-            ax.set_xlabel("Generation", fontsize=12)
-            ax.set_ylabel("Mean Novelty", fontsize=12)
-            ax.set_title(
-                f"{domain.upper()} Domain - Effect of Summary & Evolution Mode",
-                fontsize=14,
-            )
-
-            # Add grid and legend
-            ax.grid(True, linestyle="--", alpha=0.7)
-            ax.legend(loc="best")
-
-            # Save the plot
-            output_path = os.path.join(output_dir, f"{domain}_variations.png")
-            plt.savefig(output_path, dpi=300, bbox_inches="tight")
-            print(f"Variations plot for {domain} saved to {output_path}")
-            plt.close()
-
-
-def plot_strategy_metrics(configs: Dict[str, Dict[str, Any]], output_dir: str):
-    """
-    Plot the effectiveness of different creative strategies.
-    """
-    # Collect strategy metrics from all configurations that use creative strategies
-    strategy_metrics = defaultdict(list)
-
-    for config_key, experiments in configs.items():
-        config = experiments[0]["config"]
-
-        # Skip if not using creative strategies
-        if not config["creative_strategies"]:
-            continue
-
-        # Get aggregated metrics
-        agg_metrics = aggregate_metrics_by_generation(experiments)
-
-        # Get final generation metrics
-        final_gen = max(agg_metrics.keys())
-        metrics = agg_metrics[final_gen]
-
-        # Collect strategy metrics if available
-        if "strategy_metrics" in metrics:
-            for strategy, stats in metrics["strategy_metrics"].items():
-                if strategy == "None":
-                    continue
-                strategy_metrics[strategy].append(
-                    {
-                        "domain": config["domain"],
-                        "avg_novelty": stats["avg_novelty"],
-                        "std_novelty": stats.get("std_novelty", 0),
-                        "count": stats["count"],
-                    }
-                )
-
-    # Group by domain
-    domains = set(
-        item["domain"] for items in strategy_metrics.values() for item in items
-    )
-
-    for domain in domains:
-        # Aggregate strategy metrics for this domain
-        domain_strategy_metrics = {}
-
-        for strategy, metrics_list in strategy_metrics.items():
-            # Filter to this domain
-            domain_metrics = [m for m in metrics_list if m["domain"] == domain]
-
-            if domain_metrics:
-                novelty_values = [m["avg_novelty"] for m in domain_metrics]
-                count_values = [m["count"] for m in domain_metrics]
-
-                domain_strategy_metrics[strategy] = {
-                    "avg_novelty": np.mean(novelty_values),
-                    "std_novelty": np.std(novelty_values),
-                    "count": np.mean(count_values),
-                    "sample_count": len(domain_metrics),
-                }
-
-        # Plot if we have metrics
-        if domain_strategy_metrics:
-            # Sort strategies by average novelty
-            sorted_strategies = sorted(
-                domain_strategy_metrics.items(),
-                key=lambda x: x[1]["avg_novelty"],
-                reverse=True,
-            )
-
-            # Extract data for plotting
-            strategy_names = [s for s, _ in sorted_strategies]
-            novelty_means = [m["avg_novelty"] for _, m in sorted_strategies]
-            novelty_stds = [m["std_novelty"] for _, m in sorted_strategies]
-            counts = [m["count"] for _, m in sorted_strategies]
-
-            # Create the plot
-            fig, ax = plt.subplots(figsize=(12, 8))
-
-            # Set bar width and positions
-            bar_width = 0.7
-            positions = np.arange(len(strategy_names))
-
-            # Create bars with error bars
-            bars = ax.bar(
-                positions,
-                novelty_means,
-                bar_width,
-                yerr=novelty_stds,
-                capsize=5,
-                color="skyblue",
-                edgecolor="navy",
-                alpha=0.8,
-            )
-
-            # Add count annotations
-            for i, (bar, count) in enumerate(zip(bars, counts)):
-                height = bar.get_height()
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2.0,
-                    height + novelty_stds[i] + 0.005,
-                    f"n≈{count:.1f}",
-                    ha="center",
-                    va="bottom",
-                    fontsize=9,
-                )
-
-            # Add labels and title
-            ax.set_xticks(positions)
-            ax.set_xticklabels(strategy_names, rotation=45, ha="right")
-            ax.set_xlabel("Strategy", fontsize=12)
-            ax.set_ylabel("Average Novelty", fontsize=12)
-            ax.set_title(
-                f"{domain.upper()} Domain - Effectiveness of Creative Strategies",
-                fontsize=14,
-            )
-
-            # Add grid for readability
-            ax.grid(axis="y", linestyle="--", alpha=0.7)
-
-            plt.tight_layout()
-
-            # Save the plot
-            output_path = os.path.join(output_dir, f"{domain}_strategy_comparison.png")
-            plt.savefig(output_path, dpi=300, bbox_inches="tight")
-            print(f"Strategy comparison plot for {domain} saved to {output_path}")
-            plt.close()
-
-
-def plot_normalized_comparison(configs: Dict[str, Dict[str, Any]], output_dir: str):
-    """
-    Create a bar chart showing percentage increase over baseline configuration.
-    Simplified version with consistent colors and improved spacing.
-    """
-    # Extract final generation metrics for each configuration
-    domain_metrics = defaultdict(list)
-
-    for config_key, experiments in configs.items():
-        # Get sample configuration
-        config = experiments[0]["config"]
-        domain = config["domain"]
-
-        # Aggregate metrics
-        agg_metrics = aggregate_metrics_by_generation(experiments)
-
-        # Get the final generation metrics
-        if agg_metrics:
-            final_gen = max(agg_metrics.keys())
-            metrics = agg_metrics[final_gen]
-
-            # Create a more readable configuration label
-            config_label = (
-                f"{'Strategies ON' if config['creative_strategies'] else 'No Strategies'}\n"
-                f"{config['evolution_mode'].capitalize()}, {config['reasoning_effort'].capitalize()}\n"
-                f"{'Summary ON' if config['use_summary'] else 'No Summary'}"
-                f"{', Crossover' if config['crossover'] else ''}"
-            )
-
-            domain_metrics[domain].append(
-                {
-                    "config": config,
-                    "config_label": config_label,
-                    "mean_novelty": metrics["mean_novelty"],
-                    "std_novelty": metrics.get("std_novelty", 0),
-                    "sample_count": metrics.get("sample_count", 1),
-                }
-            )
 
     # Create a plot for each domain
     for domain, metrics in domain_metrics.items():
         if not metrics:
             continue
 
-        # Sort by mean novelty (ascending to find baseline)
-        metrics.sort(key=lambda x: x["mean_novelty"])
-
-        # Set the baseline as the worst-performing configuration
-        baseline = metrics[0]["mean_novelty"]
-        baseline_label = metrics[0]["config_label"]
-        baseline_novelty = metrics[0]["mean_novelty"]
-
-        # Calculate percentage increases
-        for m in metrics:
-            m["percent_increase"] = ((m["mean_novelty"] - baseline) / baseline) * 100
-
-        # Sort by percentage increase (highest first for visualization)
-        metrics.sort(key=lambda x: x["percent_increase"], reverse=True)
+        # Sort by mean novelty increase (highest first)
+        metrics.sort(key=lambda x: x["mean_novelty_increase"], reverse=True)
 
         # Set up the plot with a clean style
         plt.style.use("seaborn-v0_8-whitegrid")
-        fig, ax = plt.subplots(figsize=(12, 7))
+
+        # Create a single figure
+        fig, ax = plt.subplots(figsize=(12, 6))
 
         # Extract data for plotting
         config_labels = [m["config_label"] for m in metrics]
-        percent_increases = [m["percent_increase"] for m in metrics]
-        novelty_values = [m["mean_novelty"] for m in metrics]
+        novelty_means = [m["mean_novelty_increase"] for m in metrics]
+        novelty_stds = [m["std_novelty_increase"] for m in metrics]
+        sample_counts = [m["sample_count"] for m in metrics]
 
-        # Use a single consistent color for all bars
-        bar_color = "#3498db"  # A nice blue color
+        if plot_genome_length:
+            genome_means = [m["mean_genome_length"] for m in metrics]
+            genome_stds = [m["std_genome_length"] for m in metrics]
 
-        # Create bars with improved aesthetics
-        bar_positions = np.arange(len(config_labels))
-        bars = ax.bar(
-            bar_positions,
-            percent_increases,
-            color=bar_color,
-            width=0.7,
+        # Set width and positions
+        bar_width = 0.8
+
+        # Calculate positions for bars
+        if plot_genome_length:
+            novelty_positions = np.arange(len(config_labels)) * 2  # Even positions
+            genome_positions = novelty_positions + bar_width  # Odd positions
+        else:
+            novelty_positions = np.arange(len(config_labels))
+
+        # Colors for bars
+        novelty_color = "#3498db"  # Blue
+        genome_color = "#e74c3c"  # Red
+
+        # Create novelty bars
+        novelty_bars = ax.bar(
+            novelty_positions,
+            novelty_means,
+            bar_width,
+            yerr=novelty_stds,
+            capsize=5,
+            color=novelty_color,
             edgecolor="none",
             alpha=0.85,
+            label="Novelty",
         )
 
-        # Add annotations for percentage increases
-        for i, value in enumerate(percent_increases):
+        # Create genome length bars if requested
+        if plot_genome_length:
+            # Create a second y-axis for genome length
+            ax2 = ax.twinx()
+
+            genome_bars = ax2.bar(
+                genome_positions,
+                genome_means,
+                bar_width,
+                yerr=genome_stds,
+                capsize=5,
+                color=genome_color,
+                edgecolor="none",
+                alpha=0.85,
+                label="Genome Length",
+            )
+
+            # Set y-axis label for genome length
+            ax2.set_ylabel(
+                "Genome Length", fontsize=12, fontweight="bold", color=genome_color
+            )
+
+            # Format the second y-axis
+            ax2.tick_params(axis="y", colors=genome_color)
+            ax2.spines["right"].set_color(genome_color)
+            ax2.spines["right"].set_alpha(0.3)
+
+            # Add annotations for genome lengths
+            for i, (pos, value, std) in enumerate(
+                zip(genome_positions, genome_means, genome_stds)
+            ):
+                # Add genome length value
+                ax2.annotate(
+                    f"{value:.0f}",
+                    xy=(pos, value + std + 5),
+                    ha="center",
+                    va="bottom",
+                    fontsize=9,
+                    fontweight="bold",
+                    color=genome_color,
+                )
+
+        # Add annotations for novelty values and sample counts
+        for i, (pos, value, std, count) in enumerate(
+            zip(novelty_positions, novelty_means, novelty_stds, sample_counts)
+        ):
+            # Add novelty value
             ax.annotate(
-                f"{value:.1f}%",
-                xy=(i, value + 0.1),  # Reduced spacing
+                f"{value:.3f}",
+                xy=(pos, value + std + 0.005),
                 ha="center",
                 va="bottom",
-                fontsize=11,
+                fontsize=9,
                 fontweight="bold",
-                color="#333333",
+                color=novelty_color,
             )
 
-            # Add novelty value with minimal spacing
+            # Add sample count
             ax.annotate(
-                f"novelty: {novelty_values[i]:.4f}",
-                xy=(i, value / 3),  # Place in lower part of bar
+                f"n={count}",
+                xy=(pos, value / 2),
                 ha="center",
                 va="center",
-                fontsize=9,
-                color="white" if value > 5 else "#333333",  # Ensure readability
+                fontsize=8,
+                color="white" if value > 0.1 else "#333333",
             )
 
-        # Add baseline indicator
-        ax.axhline(y=0, color="#555555", linestyle="-", linewidth=1, alpha=0.5)
-
-        # Add baseline text at bottom
-        baseline_text = f"Baseline: {baseline_label.replace('\n', ' ')} (novelty: {baseline_novelty:.4f})"
-        fig.text(
-            0.5,
-            0.01,
-            baseline_text,
-            ha="center",
-            va="bottom",
-            fontsize=10,
-            color="#e74c3c",
-            style="italic",
-        )
-
-        # Labels and title
-        ax.set_xlabel("Configuration", fontsize=12, fontweight="bold", labelpad=10)
-        ax.set_ylabel(
-            "% Improvement over Baseline", fontsize=12, fontweight="bold", labelpad=10
-        )
-        ax.set_title(
-            f"Novelty Improvement - {domain.upper()} Domain",
-            fontsize=14,
-            fontweight="bold",
-            pad=15,
-        )
-
         # Set x-tick positions and labels
-        ax.set_xticks(bar_positions)
-        ax.set_xticklabels(config_labels, fontsize=10)
+        if plot_genome_length:
+            # Place ticks between the pairs of bars
+            ax.set_xticks(novelty_positions + bar_width / 2)
+        else:
+            ax.set_xticks(novelty_positions)
 
-        # Cleaner grid
-        ax.grid(axis="y", linestyle="--", alpha=0.3)
+        ax.set_xticklabels(config_labels, fontsize=9)
+
+        # Set labels and title
+        # ax.set_xlabel("Configuration", fontsize=12, fontweight="bold")
+        ax.set_ylabel(
+            "Final Novelty / Start Novelty",
+            fontsize=12,
+            fontweight="bold",
+            color=novelty_color,
+        )
+
+        # Format the first y-axis
+        ax.tick_params(axis="y", colors=novelty_color)
+        ax.spines["left"].set_color(novelty_color)
+        ax.spines["left"].set_alpha(0.3)
+
+        # Set title based on what we're plotting
+        if plot_genome_length:
+            title = f"{domain.upper()} Domain - Novelty and Genome Length Comparison"
+        else:
+            title = f"{domain.upper()} Domain - Novelty Comparison"
+
+        # ax.set_title(title, fontsize=14, fontweight="bold")
+
+        # Remove grid lines for a cleaner look
+        ax.grid(False)
+        if plot_genome_length:
+            ax2.grid(False)
 
         # Remove top and right spines for cleaner look
         ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.spines["left"].set_alpha(0.3)
+        if not plot_genome_length:
+            ax.spines["right"].set_visible(False)
         ax.spines["bottom"].set_alpha(0.3)
 
-        # Set y-axis to start at 0
-        max_value = max(percent_increases) if percent_increases else 0
-        y_margin = max_value * 0.1  # 10% margin
-        ax.set_ylim(bottom=-1, top=max_value + y_margin)
+        # Add legend if plotting both metrics
+        if plot_genome_length:
+            # Combine legends from both axes
+            handles = [novelty_bars[0], genome_bars[0]]
+            labels = ["Novelty", "Genome Length"]
+            ax.legend(handles, labels, loc="upper right", frameon=False)
 
         # Adjust layout and save
-        plt.tight_layout(rect=[0, 0.05, 1, 0.98])  # Make room for baseline annotation
+        plt.tight_layout()
 
-        output_path = os.path.join(output_dir, f"{domain}_normalized_comparison.png")
+        # Determine filename based on whether we're plotting genome length
+        if plot_genome_length:
+            output_path = os.path.join(
+                output_dir, f"{domain}_novelty_and_length_comparison.png"
+            )
+        else:
+            output_path = os.path.join(
+                output_dir, f"{domain}_normalized_comparison.png"
+            )
+
         plt.savefig(output_path, dpi=300, bbox_inches="tight")
-        print(f"Normalized comparison plot for {domain} saved to {output_path}")
+        print(f"Comparison plot for {domain} saved to {output_path}")
         plt.close()
 
 
-def plot_strategy_artifact_counts(configs: Dict[str, Dict[str, Any]], output_dir: str):
+def plot_strategy_comparison(configs: Dict[str, Dict[str, Any]], output_dir: str):
     """
-    Create a bar chart showing the number of artifacts produced by each creative strategy.
-    Only consider experiments that used creative strategies.
-    """
-    # Collect strategy metrics from experiments that used creative strategies
-    domain_strategy_counts = defaultdict(lambda: defaultdict(int))
-    domain_experiment_counts = defaultdict(int)
+    Create enhanced visualizations comparing strategy performance across domain pairs.
+    Only considers experiments matching the specified configuration.
 
+    Parameters:
+        configs: Dictionary of configuration data
+        output_dir: Directory to save plots
+    """
+    to_evaluate = {
+        "strategies": True,
+        "reasoning": "low",
+        "mode": "variation",
+        "summary": True,
+    }
+
+    # Filter experiments that match our criteria
+    matching_experiments = []
     for config_key, experiments in configs.items():
         config = experiments[0]["config"]
-        domain = config["domain"]
 
-        # Skip if not using creative strategies
-        if not config.get("creative_strategies", False):
-            continue
+        # Check if this configuration matches our criteria
+        if (
+            config["creative_strategies"] == to_evaluate["strategies"]
+            and config["reasoning_effort"] == to_evaluate["reasoning"]
+            and config["evolution_mode"] == to_evaluate["mode"]
+            and config["use_summary"] == to_evaluate["summary"]
+        ):
 
-        domain_experiment_counts[domain] += 1
+            matching_experiments.extend(experiments)
 
-        # Process each experiment
-        for experiment in experiments:
-            # Aggregate metrics by generation to get the most recent data
-            agg_metrics = aggregate_metrics_by_generation([experiment])
+    # Group experiments by domain
+    domain_experiments = defaultdict(list)
+    for exp in matching_experiments:
+        domain = exp["config"]["domain"]
+        domain_experiments[domain].append(exp)
 
-            if not agg_metrics:
+    # Get all domains
+    domains = list(domain_experiments.keys())
+
+    if len(domains) < 2:
+        print("Not enough domains found for comparison")
+        return
+
+    # Collect strategy metrics across all generations for each domain
+    domain_strategy_data = {}
+    domain_baseline_novelty = {}
+    domain_strategy_usage = {}
+
+    for domain, exps in domain_experiments.items():
+        # Track metrics by experiment and generation
+        exp_gen_metrics = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+        baseline_values = []
+
+        for exp_idx, exp in enumerate(exps):
+            # Get the metrics sorted by generation
+            if not exp["metrics"]:
                 continue
 
-            # Get the final generation metrics
-            final_gen = max(agg_metrics.keys())
-            metrics = agg_metrics[final_gen]
+            sorted_metrics = sorted(
+                exp["metrics"], key=lambda m: m.get("generation", 0)
+            )
 
-            # Extract strategy counts
-            if "strategy_metrics" in metrics:
-                for strategy, stats in metrics["strategy_metrics"].items():
-                    if strategy == "None":
+            # Get baseline novelty from first generation
+            if sorted_metrics and "mean_novelty" in sorted_metrics[0]:
+                baseline_values.append(sorted_metrics[0]["mean_novelty"])
+
+            # Process all generations
+            for gen_metrics in sorted_metrics:
+                generation = gen_metrics.get("generation", 0)
+
+                if "strategy_metrics" not in gen_metrics:
+                    continue
+
+                # Calculate total count of artifacts in this generation
+                total_count = sum(
+                    stats.get("count", 0)
+                    for strategy, stats in gen_metrics["strategy_metrics"].items()
+                    if strategy != "None" and strategy is not None
+                )
+
+                if total_count == 0:
+                    continue
+
+                # Collect metrics and usage percentage for each strategy
+                for strategy, stats in gen_metrics["strategy_metrics"].items():
+                    # Skip None strategy
+                    if strategy == "None" or strategy is None:
                         continue
-                    count = stats.get("count", 0)
-                    domain_strategy_counts[domain][strategy] += count
 
-    # Create a plot for each domain
-    for domain, strategy_counts in domain_strategy_counts.items():
-        if not strategy_counts:
-            print(f"No strategy count data found for {domain} domain")
-            continue
+                    if "avg_novelty" in stats:
+                        # Calculate percentage of generation using this strategy
+                        count = stats.get("count", 0)
+                        usage_percent = (
+                            (count / total_count) * 100 if total_count > 0 else 0
+                        )
 
-        # Sort strategies by count (descending)
-        sorted_strategies = sorted(
-            strategy_counts.items(), key=lambda x: x[1], reverse=True
+                        # Store by experiment and generation
+                        exp_gen_metrics[exp_idx][generation][strategy] = {
+                            "novelty": stats["avg_novelty"],
+                            "usage": usage_percent,
+                            "count": count,
+                        }
+
+        # Calculate average baseline novelty for this domain
+        domain_baseline_novelty[domain] = (
+            np.mean(baseline_values) if baseline_values else 0
         )
 
-        # Extract data for plotting
-        strategy_names = [s for s, _ in sorted_strategies]
-        counts = [c for _, c in sorted_strategies]
+        # First, average across generations for each experiment
+        exp_avg_metrics = defaultdict(lambda: defaultdict(list))
+        for exp_idx in exp_gen_metrics:
+            # Get all generations for this experiment
+            generations = exp_gen_metrics[exp_idx].keys()
+            if not generations:
+                continue
 
-        # Use a colorful palette for better distinction
-        colors = plt.cm.viridis(np.linspace(0, 0.9, len(strategy_names)))
+            # Get all strategies used in this experiment
+            all_exp_strategies = set()
+            for gen_data in exp_gen_metrics[exp_idx].values():
+                all_exp_strategies.update(gen_data.keys())
 
-        # Set up the plot
-        plt.style.use("seaborn-v0_8-whitegrid")
-        fig, ax = plt.subplots(figsize=(12, 8))
+            # Average each strategy across all generations
+            for strategy in all_exp_strategies:
+                strategy_novelty = []
+                strategy_usage = []
 
-        # Create bars
-        bar_positions = np.arange(len(strategy_names))
-        bars = ax.bar(
-            bar_positions, counts, color=colors, width=0.7, edgecolor="none", alpha=0.85
-        )
+                for gen in generations:
+                    if strategy in exp_gen_metrics[exp_idx][gen]:
+                        metrics = exp_gen_metrics[exp_idx][gen][strategy]
+                        strategy_novelty.append(metrics["novelty"])
+                        strategy_usage.append(metrics["usage"])
 
-        # Add count annotations on top of bars
-        for i, count in enumerate(counts):
-            ax.annotate(
-                f"{count}",
-                xy=(i, count + 0.5),
-                ha="center",
-                va="bottom",
-                fontsize=10,
+                if strategy_novelty and strategy_usage:
+                    exp_avg_metrics[exp_idx][strategy] = {
+                        "novelty": np.mean(strategy_novelty),
+                        "usage": np.mean(strategy_usage),
+                    }
+
+        # Then, average across experiments
+        strategy_data = defaultdict(list)
+        strategy_usage = defaultdict(list)
+
+        for exp_idx in exp_avg_metrics:
+            for strategy, metrics in exp_avg_metrics[exp_idx].items():
+                strategy_data[strategy].append(metrics["novelty"])
+                strategy_usage[strategy].append(metrics["usage"])
+
+        # Store final averaged data
+        domain_strategy_data[domain] = {
+            strategy: values for strategy, values in strategy_data.items() if values
+        }
+
+        domain_strategy_usage[domain] = {
+            strategy: values for strategy, values in strategy_usage.items() if values
+        }
+
+    # Get all unique strategies across all domains
+    all_strategies = set()
+    for domain_metrics in domain_strategy_data.values():
+        all_strategies.update(domain_metrics.keys())
+
+    # Remove None strategy if it somehow got included
+    if "None" in all_strategies:
+        all_strategies.remove("None")
+    if None in all_strategies:
+        all_strategies.remove(None)
+
+    # Create a summary file for correlation analysis across all domains
+    correlation_summary = []
+
+    # Create plots for each pair of domains
+    for i in range(len(domains)):
+        for j in range(i + 1, len(domains)):
+            domain_a = domains[i]
+            domain_b = domains[j]
+
+            # Skip if either domain doesn't have strategy metrics
+            if not domain_strategy_data[domain_a] or not domain_strategy_data[domain_b]:
+                continue
+
+            # Prepare data for correlation analysis - using both novelty and usage
+            strategies = []
+            x_means_novelty = []
+            y_means_novelty = []
+            x_stds_novelty = []
+            y_stds_novelty = []
+
+            x_means_usage = []
+            y_means_usage = []
+            x_stds_usage = []
+            y_stds_usage = []
+
+            for strategy in all_strategies:
+                # Skip if strategy doesn't exist in both domains
+                if (
+                    strategy not in domain_strategy_data[domain_a]
+                    or strategy not in domain_strategy_data[domain_b]
+                    or strategy not in domain_strategy_usage[domain_a]
+                    or strategy not in domain_strategy_usage[domain_b]
+                ):
+                    continue
+
+                # Calculate percentage improvement over baseline for novelty
+                x_values_novelty = [
+                    (v / domain_baseline_novelty[domain_a] - 1) * 100
+                    for v in domain_strategy_data[domain_a][strategy]
+                ]
+                y_values_novelty = [
+                    (v / domain_baseline_novelty[domain_b] - 1) * 100
+                    for v in domain_strategy_data[domain_b][strategy]
+                ]
+
+                # Get usage percentages
+                x_values_usage = domain_strategy_usage[domain_a][strategy]
+                y_values_usage = domain_strategy_usage[domain_b][strategy]
+
+                if (
+                    len(x_values_novelty) > 0
+                    and len(y_values_novelty) > 0
+                    and len(x_values_usage) > 0
+                    and len(y_values_usage) > 0
+                ):
+                    strategies.append(strategy)
+
+                    # Novelty metrics
+                    x_means_novelty.append(np.mean(x_values_novelty))
+                    y_means_novelty.append(np.mean(y_values_novelty))
+                    x_stds_novelty.append(
+                        np.std(x_values_novelty) if len(x_values_novelty) > 1 else 0.5
+                    )
+                    y_stds_novelty.append(
+                        np.std(y_values_novelty) if len(y_values_novelty) > 1 else 0.5
+                    )
+
+                    # Usage metrics
+                    x_means_usage.append(np.mean(x_values_usage))
+                    y_means_usage.append(np.mean(y_values_usage))
+                    x_stds_usage.append(
+                        np.std(x_values_usage) if len(x_values_usage) > 1 else 0.5
+                    )
+                    y_stds_usage.append(
+                        np.std(y_values_usage) if len(y_values_usage) > 1 else 0.5
+                    )
+
+            # Calculate correlations if we have enough data points
+            if (
+                len(strategies) >= 3
+            ):  # Need at least 3 points for meaningful correlation
+                # Novelty correlation
+                novelty_corr, novelty_p = scipy.stats.pearsonr(
+                    x_means_novelty, y_means_novelty
+                )
+
+                # Usage correlation
+                usage_corr, usage_p = scipy.stats.pearsonr(x_means_usage, y_means_usage)
+
+                # Add to summary
+                correlation_summary.append(
+                    {
+                        "domain_pair": f"{domain_a} vs {domain_b}",
+                        "novelty_pearson_r": novelty_corr,
+                        "novelty_pearson_p": novelty_p,
+                        "usage_pearson_r": usage_corr,
+                        "usage_pearson_p": usage_p,
+                        "strategy_count": len(strategies),
+                    }
+                )
+
+                # Correlation text for plots
+                novelty_corr_text = (
+                    f"Novelty Correlation: r={novelty_corr:.2f} (p={novelty_p:.3f})"
+                )
+                usage_corr_text = (
+                    f"Usage Correlation: r={usage_corr:.2f} (p={usage_p:.3f})"
+                )
+            else:
+                novelty_corr_text = "Insufficient data for correlation"
+                usage_corr_text = "Insufficient data for correlation"
+
+            # 1. Create normalized scatter plot showing percentage improvement in novelty
+            plt.figure(figsize=(10, 10))
+
+            # Create scatter plot with error bars
+            plt.errorbar(
+                x_means_novelty,
+                y_means_novelty,
+                xerr=x_stds_novelty,
+                yerr=y_stds_novelty,
+                fmt="o",
+                ecolor="lightgray",
+                elinewidth=1,
+                capsize=3,
+                markersize=8,
+                alpha=0.7,
+            )
+
+            # Add strategy labels
+            for strategy, x, y in zip(strategies, x_means_novelty, y_means_novelty):
+                plt.annotate(
+                    strategy,
+                    xy=(x, y),
+                    xytext=(5, 5),
+                    textcoords="offset points",
+                    fontsize=9,
+                    alpha=0.8,
+                )
+
+            # Calculate focused axis limits with padding
+            if x_means_novelty and y_means_novelty:
+                # Calculate padding as a percentage of the data range
+                x_padding = (
+                    (max(x_means_novelty) - min(x_means_novelty)) * 0.2
+                    if len(x_means_novelty) > 1
+                    else 1.0
+                )
+                y_padding = (
+                    (max(y_means_novelty) - min(y_means_novelty)) * 0.2
+                    if len(y_means_novelty) > 1
+                    else 1.0
+                )
+
+                # Set focused limits with padding
+                x_min = min(x_means_novelty) - x_padding - max(x_stds_novelty)
+                x_max = max(x_means_novelty) + x_padding + max(x_stds_novelty)
+                y_min = min(y_means_novelty) - y_padding - max(y_stds_novelty)
+                y_max = max(y_means_novelty) + y_padding + max(y_stds_novelty)
+
+                plt.xlim(x_min, x_max)
+                plt.ylim(y_min, y_max)
+
+            # Add reference lines at x=0 and y=0
+            plt.axhline(y=0, color="gray", linestyle="-", alpha=0.3)
+            plt.axvline(x=0, color="gray", linestyle="-", alpha=0.3)
+
+            # Add diagonal line (y=x) if it passes through the visible area
+            if x_means_novelty and y_means_novelty:
+                min_val = min(x_min, y_min)
+                max_val = max(x_max, y_max)
+                plt.plot([min_val, max_val], [min_val, max_val], "k--", alpha=0.3)
+
+            # Set labels and title
+            plt.xlabel(f"{domain_a} % Improvement", fontsize=12, fontweight="bold")
+            plt.ylabel(f"{domain_b} % Improvement", fontsize=12, fontweight="bold")
+            plt.title(
+                f"Strategy % Improvement: {domain_a} vs {domain_b}\n{novelty_corr_text}",
+                fontsize=14,
                 fontweight="bold",
-                color="#333333",
             )
 
-            # Add percentage of total
-            total_count = sum(counts)
-            percentage = (count / total_count) * 100
+            # Add grid
+            plt.grid(True, alpha=0.3)
 
-            ax.annotate(
-                f"({percentage:.1f}%)",
-                xy=(i, count / 2),  # Place in middle of bar
-                ha="center",
-                va="center",
-                fontsize=9,
-                color="white" if count > 5 else "#333333",  # Ensure readability
+            # Adjust layout and save
+            plt.tight_layout()
+            output_path = os.path.join(
+                output_dir, f"strategy_improvement_{domain_a}_vs_{domain_b}.png"
+            )
+            plt.savefig(output_path, dpi=300, bbox_inches="tight")
+            print(
+                f"Strategy improvement plot for {domain_a} vs {domain_b} saved to {output_path}"
+            )
+            plt.close()
+
+            # 2. Create scatter plot showing usage percentages
+            plt.figure(figsize=(10, 10))
+
+            # Create scatter plot with error bars
+            plt.errorbar(
+                x_means_usage,
+                y_means_usage,
+                xerr=x_stds_usage,
+                yerr=y_stds_usage,
+                fmt="o",
+                ecolor="lightgray",
+                elinewidth=1,
+                capsize=3,
+                markersize=8,
+                alpha=0.7,
             )
 
-        # Add labels and title
-        ax.set_xlabel("Creative Strategy", fontsize=12, fontweight="bold", labelpad=10)
-        ax.set_ylabel(
-            "Number of Artifacts", fontsize=12, fontweight="bold", labelpad=10
+            # Add strategy labels
+            for strategy, x, y in zip(strategies, x_means_usage, y_means_usage):
+                plt.annotate(
+                    strategy,
+                    xy=(x, y),
+                    xytext=(5, 5),
+                    textcoords="offset points",
+                    fontsize=9,
+                    alpha=0.8,
+                )
+
+            # Calculate focused axis limits with padding
+            if x_means_usage and y_means_usage:
+                # Calculate padding as a percentage of the data range
+                x_padding = (
+                    (max(x_means_usage) - min(x_means_usage)) * 0.2
+                    if len(x_means_usage) > 1
+                    else 1.0
+                )
+                y_padding = (
+                    (max(y_means_usage) - min(y_means_usage)) * 0.2
+                    if len(y_means_usage) > 1
+                    else 1.0
+                )
+
+                # Set focused limits with padding
+                x_min = max(0, min(x_means_usage) - x_padding - max(x_stds_usage))
+                x_max = min(100, max(x_means_usage) + x_padding + max(x_stds_usage))
+                y_min = max(0, min(y_means_usage) - y_padding - max(y_stds_usage))
+                y_max = min(100, max(y_means_usage) + y_padding + max(y_stds_usage))
+
+                plt.xlim(x_min, x_max)
+                plt.ylim(y_min, y_max)
+
+            # Add diagonal line (y=x) if it passes through the visible area
+            if x_means_usage and y_means_usage:
+                min_val = min(x_min, y_min)
+                max_val = max(x_max, y_max)
+                plt.plot([min_val, max_val], [min_val, max_val], "k--", alpha=0.3)
+
+            # Set labels and title
+            plt.xlabel(f"{domain_a} Strategy Usage %", fontsize=12, fontweight="bold")
+            plt.ylabel(f"{domain_b} Strategy Usage %", fontsize=12, fontweight="bold")
+            plt.title(
+                f"Strategy Usage Percentage: {domain_a} vs {domain_b}\n{usage_corr_text}",
+                fontsize=14,
+                fontweight="bold",
+            )
+
+            # Add grid
+            plt.grid(True, alpha=0.3)
+
+            # Adjust layout and save
+            plt.tight_layout()
+            output_path = os.path.join(
+                output_dir, f"strategy_usage_{domain_a}_vs_{domain_b}.png"
+            )
+            plt.savefig(output_path, dpi=300, bbox_inches="tight")
+            print(
+                f"Strategy usage plot for {domain_a} vs {domain_b} saved to {output_path}"
+            )
+            plt.close()
+
+    # Create a summary table of correlations and strategy performance
+    if correlation_summary:
+        plt.figure(figsize=(12, len(correlation_summary) * 0.5 + 2))
+        plt.axis("off")
+
+        # Create table data
+        table_data = [
+            ["Domain Pair", "Novelty r", "p-value", "Usage r", "p-value", "Strategies"]
+        ]
+        for entry in correlation_summary:
+            table_data.append(
+                [
+                    entry["domain_pair"],
+                    f"{entry['novelty_pearson_r']:.3f}",
+                    f"{entry['novelty_pearson_p']:.3f}",
+                    f"{entry['usage_pearson_r']:.3f}",
+                    f"{entry['usage_pearson_p']:.3f}",
+                    str(entry["strategy_count"]),
+                ]
+            )
+
+        # Create table
+        table = plt.table(
+            cellText=table_data,
+            colLabels=None,
+            cellLoc="center",
+            loc="center",
+            bbox=[0, 0, 1, 1],
         )
 
-        experiment_text = f"From {domain_experiment_counts[domain]} experiments"
-        ax.set_title(
-            f"Artifacts Produced by Each Creative Strategy - {domain.upper()} Domain\n{experiment_text}",
+        # Style the table
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1, 1.5)
+
+        # Add title
+        plt.title(
+            "Strategy Performance Correlation Across Domains",
             fontsize=14,
             fontweight="bold",
-            pad=15,
+            pad=20,
         )
 
-        # Set x-tick positions and labels
-        ax.set_xticks(bar_positions)
-        ax.set_xticklabels(strategy_names, fontsize=9, rotation=45, ha="right")
-
-        # Cleaner grid
-        ax.grid(axis="y", linestyle="--", alpha=0.3)
-
-        # Remove top and right spines
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.spines["left"].set_alpha(0.3)
-        ax.spines["bottom"].set_alpha(0.3)
-
-        # Add total count as text
-        fig.text(
-            0.5,
-            0.01,
-            f"Total artifacts: {total_count}",
-            ha="center",
-            va="bottom",
-            fontsize=10,
-            color="#333333",
-            style="italic",
-        )
-
-        # Adjust layout and save
-        plt.tight_layout(rect=[0, 0.05, 1, 0.98])
-
-        output_path = os.path.join(output_dir, f"{domain}_strategy_artifact_counts.png")
+        # Save the table
+        plt.tight_layout()
+        output_path = os.path.join(output_dir, "strategy_correlation_summary.png")
         plt.savefig(output_path, dpi=300, bbox_inches="tight")
-        print(f"Strategy artifact count plot for {domain} saved to {output_path}")
+        print(f"Correlation summary saved to {output_path}")
         plt.close()
+
+        # Also save as CSV for further analysis
+        csv_path = os.path.join(output_dir, "strategy_correlation_summary.csv")
+        with open(csv_path, "w", newline="") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerows(table_data)
+        print(f"Correlation data saved to {csv_path}")
+
+        # Create a comprehensive strategy performance summary across all domains
+        strategy_summary = []
+
+        # Collect data for all strategies across all domains
+        for strategy in all_strategies:
+            strategy_data = {"strategy": strategy, "domains": {}}
+
+            for domain in domains:
+                if (
+                    strategy in domain_strategy_data[domain]
+                    and strategy in domain_strategy_usage[domain]
+                ):
+
+                    # Calculate percentage improvement
+                    novelty_values = domain_strategy_data[domain][strategy]
+                    pct_improvement = [
+                        (v / domain_baseline_novelty[domain] - 1) * 100
+                        for v in novelty_values
+                    ]
+
+                    # Get usage percentages
+                    usage_values = domain_strategy_usage[domain][strategy]
+
+                    strategy_data["domains"][domain] = {
+                        "avg_pct_improvement": np.mean(pct_improvement),
+                        "std_pct_improvement": (
+                            np.std(pct_improvement) if len(pct_improvement) > 1 else 0
+                        ),
+                        "avg_usage": np.mean(usage_values),
+                        "std_usage": (
+                            np.std(usage_values) if len(usage_values) > 1 else 0
+                        ),
+                        "sample_count": len(novelty_values),
+                    }
+
+            # Only include strategies that appear in at least two domains
+            if len(strategy_data["domains"]) >= 2:
+                strategy_summary.append(strategy_data)
+
+        # Create a CSV with the comprehensive strategy summary
+        if strategy_summary:
+            csv_path = os.path.join(output_dir, "strategy_performance_summary.csv")
+            with open(csv_path, "w", newline="") as csvfile:
+                writer = csv.writer(csvfile)
+
+                # Write header
+                header = ["Strategy"]
+                for domain in domains:
+                    header.extend(
+                        [
+                            f"{domain} Avg % Improvement",
+                            f"{domain} Std % Improvement",
+                            f"{domain} Avg Usage %",
+                            f"{domain} Std Usage %",
+                            f"{domain} Samples",
+                        ]
+                    )
+                writer.writerow(header)
+
+                # Write data for each strategy
+                for strategy_data in strategy_summary:
+                    row = [strategy_data["strategy"]]
+
+                    for domain in domains:
+                        if domain in strategy_data["domains"]:
+                            domain_data = strategy_data["domains"][domain]
+                            row.extend(
+                                [
+                                    f"{domain_data['avg_pct_improvement']:.2f}",
+                                    f"{domain_data['std_pct_improvement']:.2f}",
+                                    f"{domain_data['avg_usage']:.2f}",
+                                    f"{domain_data['std_usage']:.2f}",
+                                    str(domain_data["sample_count"]),
+                                ]
+                            )
+                        else:
+                            row.extend(["N/A", "N/A", "N/A", "N/A", "0"])
+
+                    writer.writerow(row)
+
+            print(f"Comprehensive strategy performance summary saved to {csv_path}")
 
 
 # Add this to the main function
@@ -1135,13 +1039,11 @@ def main():
         return
 
     # Create plots
-    plot_configuration_comparison(configs, output_dir)
     plot_normalized_comparison(configs, output_dir)
-    plot_consolidated_novelty_and_length(configs, output_dir)
-    plot_novelty_over_generations(configs, output_dir)
-    plot_strategy_metrics(configs, output_dir)
+    # plot_strategy_comparison(configs, output_dir)
 
-    print(f"Analysis complete. Results saved to {output_dir}")
+    # print(f"Analysis complete. Results saved to {output_dir}")
+    # print(configs.keys())
 
 
 if __name__ == "__main__":

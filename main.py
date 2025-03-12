@@ -50,20 +50,10 @@ def parse_arguments():
         "--max_workers", type=int, default=5, help="Maximum number of parallel workers"
     )
 
-    # Valid artifact classes
-    VALID_ARTIFACT_CLASSES = [
-        "ShaderArtifact",
-        "GameIdeaArtifact",
-        "SdfArtifact",
-        "GaArtifact",
-        "ImageGenArtifact",
-    ]
-
     parser.add_argument(
         "--artifact_class",
         type=str,
-        default="SdfArtifact",
-        choices=VALID_ARTIFACT_CLASSES,
+        default="shader",
         help="Class of artifact to evolve",
     )
     parser.add_argument(
@@ -99,7 +89,7 @@ if __name__ == "__main__":
     args = parse_arguments()
 
     # Create a timestamped directory for this run
-    output_dir = os.path.join("results", args.output_name)
+    output_dir = os.path.join("results", f"{args.artifact_class}_{args.output_name}")
     if os.path.exists(output_dir):
         print(f"Output directory {output_dir} already exists")
         exit(1)

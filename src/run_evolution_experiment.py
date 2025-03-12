@@ -1,11 +1,8 @@
 import os
 import json
 import random
-import uuid
-import time
 import logging
 import numpy as np
-from enum import Enum
 import torch
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Union
@@ -14,7 +11,6 @@ import traceback
 
 from .population import Population
 from .artifacts import Artifact, get_artifact_class
-
 from .models import llm_client
 from .creative_strategies_manager import CreativityStrategyManager
 from .utils import load_image_path_base64
@@ -38,10 +34,10 @@ def construct_evolution_prompt(
 
     prompt = ""
     if len(user_prompt):
-        prompt = f"I'm exploring diverse possibilities for {user_prompt}s.\n\n"
+        prompt = f"I'm exploring diverse possibilities for {user_prompt}\n\n"
 
     if summary:
-        prompt += f"Summary of the current population: {summary}\n\n"
+        prompt += f"Summary of the current population:\n{summary}\n"
 
     if evolution_mode == "variation":
         prompt += f"Make this {artifacts[0].name} significantly different from what is done before:\n\n"

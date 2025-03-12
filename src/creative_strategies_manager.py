@@ -91,7 +91,9 @@ class CreativityStrategyManager:
         if include_theory:
             prompt += f"## Theory Base\n{strategy_dict['theory_base']}\n\n"
 
-        prompt += "Follow these steps to generate your creative idea:\n\n"
+        prompt += (
+            "Follow these steps to think creatively. Do not include in the output:\n\n"
+        )
 
         # Add operations as numbered steps
         for i, operation in enumerate(strategy_dict["operations"]):

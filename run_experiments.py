@@ -15,7 +15,9 @@ logging.basicConfig(
 
 def create_experiment_name(config: Dict[str, Any]) -> str:
     """Create a descriptive name for the experiment based on its configuration."""
-    domain = "shader" if config["artifact_class"] == "ShaderArtifact" else "game"
+    domain = config[
+        "artifact_class"
+    ]  # "shader" if config["artifact_class"] == "ShaderArtifact" else "website"
     strat = "strat" if config["use_creative_strategies"] else "no-strat"
     mode = config["evolution_mode"]
     reasoning = config["reasoning_effort"]
@@ -66,11 +68,15 @@ def run_ablation_study(base_output_dir: str, random_seeds: list = [42, 43, 44]):
 
     # Define the domains to test
     domains = [
-        {"artifact_class": "ShaderArtifact", "prompt": "Create an interesting shader"},
+        {"artifact_class": "shader", "prompt": "Create an interesting shader"},
         # {
         #     "artifact_class": "GameIdeaArtifact",
         #     "prompt": "a creative variation of the game snake",
         # },
+        {
+            "artifact_class": "website",
+            "prompt": "a creative time display. Only show a 512px canvas and any instructions should appear on hover.",
+        },
     ]
 
     # Common configuration parameters
@@ -85,6 +91,7 @@ def run_ablation_study(base_output_dir: str, random_seeds: list = [42, 43, 44]):
         "evolution_mode": "variation",
         "use_creative_strategies": True,
         "reasoning_effort": "low",
+        "crossover_rate": 0.0,
     }
 
     # Run the core 2x2 experiments

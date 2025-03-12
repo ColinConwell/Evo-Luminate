@@ -22,6 +22,7 @@ from sklearn.cluster import KMeans
 import math
 from scipy.optimize import linear_sum_assignment
 import shutil
+from PIL import Image
 
 
 def load_latents(results_dir):
@@ -117,7 +118,7 @@ def find_representative_latents(latents, n_representatives):
     return representative_latents
 
 
-def create_grid_umap(latents, n_neighbors=15, min_dist=0.1):
+def create_grid_umap(latents, n_neighbors=15, min_dist=0.1, aspect_ratio=1.0):
     """
     Project latents to 2D using UMAP and assign grid positions
 
@@ -125,6 +126,7 @@ def create_grid_umap(latents, n_neighbors=15, min_dist=0.1):
         latents: Dictionary of {key: latent_vector}
         n_neighbors: UMAP parameter for local neighborhood size
         min_dist: UMAP parameter for minimum distance between points
+        aspect_ratio: Desired width/height ratio of the grid (default: 1.0 for square)
 
     Returns:
         Dictionary with grid dimensions and positions
@@ -149,23 +151,75 @@ def create_grid_umap(latents, n_neighbors=15, min_dist=0.1):
     max_vals = embedding.max(axis=0)
     embedding_scaled = (embedding - min_vals) / (max_vals - min_vals)
 
-    # Determine grid size (square grid)
+    # Determine grid size based on aspect ratio
     n_items = len(keys)
-    grid_size = math.ceil(math.sqrt(n_items))
+
+    # Calculate grid dimensions that maintain the aspect ratio
+    # width/height = aspect_ratio, and width * height >= n_items
+    height = math.sqrt(n_items / aspect_ratio)
+    width = height * aspect_ratio
+
+    # Round up to ensure we have enough cells
+    cols = math.ceil(width)
+    rows = math.ceil(height)
+
+    # Ensure we have enough cells
+    while rows * cols < n_items:
+        # Increase the smaller dimension to maintain aspect ratio as closely as possible
+        if cols / rows < aspect_ratio:
+            cols += 1
+        else:
+            rows += 1
+
+    # Add extra space for organic look
+    grid_size_rows = rows + 1
+    grid_size_cols = cols + 1
 
     # Create cost matrix for grid assignment
-    cost_matrix = np.zeros((n_items, grid_size * grid_size))
+    cost_matrix = np.zeros((n_items, grid_size_rows * grid_size_cols))
 
     # Generate all grid positions
     grid_positions_array = np.array(
-        [(i, j) for i in range(grid_size) for j in range(grid_size)]
+        [(i, j) for i in range(grid_size_rows) for j in range(grid_size_cols)]
     )
 
+    # Calculate the center of the grid
+    center_i = (grid_size_rows - 1) / 2
+    center_j = (grid_size_cols - 1) / 2
+
+    # Apply a non-linear scaling to grid positions to make them denser toward the center
+    # This creates a more organic, circular layout with fewer holes in the middle
+    grid_positions_scaled = np.zeros_like(grid_positions_array, dtype=float)
+    for idx, (i, j) in enumerate(grid_positions_array):
+        # Calculate distance from center (0 to 1 scale)
+        di = (i - center_i) / max(center_i, 1)
+        dj = (j - center_j) / max(center_j, 1)
+
+        # Apply non-linear scaling - points further from center get compressed inward
+        # This makes the center denser by compressing the outer regions
+        scale_factor = (
+            0.3  # Controls how much scaling to apply (0.0 = no scaling, 1.0 = maximum)
+        )
+
+        # Apply a power function that compresses the outer regions
+        # For values < 1, power > 1 compresses toward zero
+        di_scaled = di * (abs(di) ** scale_factor) / abs(di) if di != 0 else 0
+        dj_scaled = dj * (abs(dj) ** scale_factor) / abs(dj) if dj != 0 else 0
+
+        # Convert back to grid coordinates
+        grid_positions_scaled[idx, 0] = center_i + di_scaled * center_i
+        grid_positions_scaled[idx, 1] = center_j + dj_scaled * center_j
+
     # Normalize grid positions to [0,1] range (same as embedding)
-    if grid_size > 1:  # Avoid division by zero
-        grid_positions_normalized = grid_positions_array / (grid_size - 1)
-    else:
-        grid_positions_normalized = grid_positions_array
+    grid_positions_normalized = np.zeros_like(grid_positions_scaled, dtype=float)
+    if grid_size_rows > 1:  # Avoid division by zero
+        grid_positions_normalized[:, 0] = grid_positions_scaled[:, 0] / (
+            grid_size_rows - 1
+        )
+    if grid_size_cols > 1:  # Avoid division by zero
+        grid_positions_normalized[:, 1] = grid_positions_scaled[:, 1] / (
+            grid_size_cols - 1
+        )
 
     # Calculate cost as Euclidean distance between UMAP embeddings and grid positions
     for i in range(n_items):
@@ -187,8 +241,8 @@ def create_grid_umap(latents, n_neighbors=15, min_dist=0.1):
 
     # Create final result
     result = {
-        "rows": grid_size,
-        "cols": grid_size,
+        "rows": grid_size_rows,
+        "cols": grid_size_cols,
         "grid_positions": grid_positions,
         "representative_keys": keys,
     }
@@ -196,19 +250,93 @@ def create_grid_umap(latents, n_neighbors=15, min_dist=0.1):
     return result
 
 
+def create_grid_image(results_dir, grid_positions, rows, cols):
+    """
+    Create a composite image with all representative images laid out on the grid
+
+    Args:
+        results_dir: Directory containing the results
+        grid_positions: Dictionary mapping genome IDs to grid positions
+        rows: Number of rows in the grid
+        cols: Number of columns in the grid
+
+    Returns:
+        Path to the saved composite image
+    """
+    images_dir = os.path.join(results_dir, "artifacts", "images")
+
+    if not os.path.exists(images_dir):
+        print(f"Images directory not found at {images_dir}")
+        return None
+
+    # Check if at least one image exists
+    sample_id = next(iter(grid_positions.keys()))
+    sample_path = os.path.join(images_dir, f"{sample_id}.jpg")
+
+    if not os.path.exists(sample_path):
+        # Try PNG if JPG doesn't exist
+        sample_path = os.path.join(images_dir, f"{sample_id}.png")
+        if not os.path.exists(sample_path):
+            print(f"No images found for representative genomes in {images_dir}")
+            return None
+
+    # Get image dimensions from the first image
+    with Image.open(sample_path) as img:
+        img_width, img_height = img.size
+
+    # Create a blank canvas for the grid
+    grid_img = Image.new("RGB", (cols * img_width, rows * img_height), color="white")
+
+    # Place each image in its grid position
+    missing_images = 0
+    for genome_id, position in grid_positions.items():
+        i, j = position["i"], position["j"]
+
+        # Try JPG first, then PNG
+        img_path = os.path.join(images_dir, f"{genome_id}.jpg")
+        if not os.path.exists(img_path):
+            img_path = os.path.join(images_dir, f"{genome_id}.png")
+
+        if os.path.exists(img_path):
+            try:
+                with Image.open(img_path) as img:
+                    # Resize if necessary to ensure consistent grid
+                    if img.size != (img_width, img_height):
+                        img = img.resize((img_width, img_height))
+
+                    # Calculate position in the grid
+                    x = j * img_width
+                    y = i * img_height
+
+                    # Paste the image onto the grid
+                    grid_img.paste(img, (x, y))
+            except Exception as e:
+                print(f"Error processing image {img_path}: {e}")
+                missing_images += 1
+        else:
+            missing_images += 1
+
+    if missing_images > 0:
+        print(
+            f"Warning: {missing_images} images were missing or could not be processed"
+        )
+
+    # Save the composite grid image
+    output_path = os.path.join(results_dir, "grid_visualization.jpg")
+    grid_img.save(output_path, quality=95)
+    print(f"Grid visualization saved to {output_path}")
+
+    return output_path
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Select representative latent vectors and create grid-based UMAP visualization"
     )
     parser.add_argument(
-        "--results-dir",
-        "-i",
-        required=True,
+        "results_dir",
         help="Directory containing output directory",
     )
-    # parser.add_argument(
-    #     "--output", "-o", default="grid_positions.json", help="Output JSON file path"
-    # )
     parser.add_argument(
         "--num-representatives",
         "-n",
@@ -217,10 +345,16 @@ def main():
         help="Number of representative latent vectors to select",
     )
     parser.add_argument(
-        "--neighbors", type=int, default=15, help="UMAP n_neighbors parameter"
+        "--neighbors", type=int, default=80, help="UMAP n_neighbors parameter"
     )
     parser.add_argument(
         "--min-dist", type=float, default=0.1, help="UMAP min_dist parameter"
+    )
+    parser.add_argument(
+        "--aspect-ratio",
+        type=float,
+        default=1.0,
+        help="Desired width/height ratio of the grid (default: 1.0 for square)",
     )
     args = parser.parse_args()
 
@@ -237,7 +371,9 @@ def main():
     )
 
     # Create grid UMAP for the representative latents
-    result = create_grid_umap(representative_latents, args.neighbors, args.min_dist)
+    result = create_grid_umap(
+        representative_latents, args.neighbors, args.min_dist, args.aspect_ratio
+    )
 
     output_path = os.path.join(args.results_dir, "grid_positions.json")
     with open(output_path, "w") as f:
@@ -246,6 +382,11 @@ def main():
     print(f"Grid positions saved to {output_path}")
     print(f"Grid dimensions: {result['rows']}x{result['cols']}")
     print(f"Total positions: {len(result['grid_positions'])}")
+
+    # Create and save the grid visualization image
+    create_grid_image(
+        args.results_dir, result["grid_positions"], result["rows"], result["cols"]
+    )
 
 
 if __name__ == "__main__":
