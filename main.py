@@ -53,7 +53,7 @@ def parse_arguments():
     parser.add_argument(
         "--artifact_class",
         type=str,
-        default="shader",
+        default="ShaderArtifact",
         help="Class of artifact to evolve",
     )
     parser.add_argument(
