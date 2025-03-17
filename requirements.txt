@@ -2,10 +2,14 @@ numpy
 llvmlite>=0.39.0
 numba>=0.57.0
 pillow
-torch
-torchvision
+torch>=2.0.0
+torchvision>=0.15.0
 ftfy
 regex
 tqdm
 git+https://github.com/openai/CLIP.git
 umap-learn>=0.5.3
+aisuite[openai]
+docstring_parser
+transformers
+pyyaml

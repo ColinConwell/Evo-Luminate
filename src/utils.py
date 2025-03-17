@@ -5,6 +5,7 @@ import base64, logging
 from io import BytesIO
 from PIL import Image
 import requests
+import torch
 
 
 def load_image_url_base64(url: str, format: str = "JPEG") -> Optional[str]:
@@ -127,3 +128,17 @@ def loadCodeBlocks(filepath: str) -> Dict[str, str]:
     """
     with open(filepath, "r") as f:
         return yaml.safe_load(f)
+
+
+def get_device():
+    """Get the best available device for PyTorch (CUDA, MPS, or CPU)
+    
+    Returns:
+        torch.device: The best available device for Apple Silicon, NVIDIA GPUs, or CPU fallback
+    """
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return torch.device("mps")
+    else:
+        return torch.device("cpu")

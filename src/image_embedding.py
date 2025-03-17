@@ -2,10 +2,13 @@ import torch
 import numpy as np
 from PIL import Image
 import clip
+from .utils import get_device
 
 
 class ImageEmbedder:
-    def __init__(self, clip_model="ViT-B/32", device="cpu"):
+    def __init__(self, clip_model="ViT-B/32", device=None):
+        if device is None:
+            device = get_device()
         self.model, self.preprocess = clip.load(clip_model, device=device)
         self.device = device
 

@@ -13,11 +13,27 @@ cd lluminate
 pip install -r requirements.txt
 ```
 
-To install certain renderers cd to one of the subdirectories and npm install
+### macOS Apple Silicon Support
 
-/src/render-shaders
-/src/render-sdf
-/src/render_website
+This project supports Apple Silicon (M1/M2/M3) Macs using Metal Performance Shaders (MPS). The code will automatically detect and use MPS acceleration when running on Apple Silicon hardware. No additional configuration is needed.
+
+When you run the application, you should see:
+
+```bash
+Using PyTorch device: mps
+```
+
+Note: On Apple Silicon, Metal Performance Shaders provide significant speedups for tensor operations compared to CPU execution.
+
+### Renderers Installation
+
+To install certain renderers, cd to one of the subdirectories and run npm install:
+
+```bash
+cd src/render-shaders && npm install
+cd src/render-sdf && npm install 
+cd src/render-p5js && npm install
+```
 
 ## Usage
 
