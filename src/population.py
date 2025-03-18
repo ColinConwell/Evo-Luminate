@@ -69,11 +69,14 @@ class Population:
 
         If return_distances is True, also returns the average distance to k nearest neighbors
         """
+        # Ensure we're working with float32 for MPS compatibility
+        embeddings = embeddings.to(torch.float32)
+        
         if len(self.artifacts) <= k_neighbors:
             indices = list(range(len(self.artifacts)))
             if return_distances:
                 # If not enough artifacts for meaningful distances, return zeros
-                return indices, torch.zeros(len(self.artifacts))
+                return indices, torch.zeros(len(self.artifacts), dtype=torch.float32)
             return indices
 
         norm_emb = torch.nn.functional.normalize(embeddings, dim=1)
@@ -81,8 +84,10 @@ class Population:
         distances = 1 - similarity  # cosine distance
 
         # Set self-distance to a high value to exclude from nearest neighbor calculation
+        # Use a value that can safely be represented in all precisions
+        max_val = torch.finfo(distances.dtype).max / 2
         for i in range(distances.shape[0]):
-            distances[i, i] = 1e6
+            distances[i, i] = max_val
 
         # Get k nearest neighbors for each genome
         sorted_dist, _ = torch.sort(distances, dim=1)

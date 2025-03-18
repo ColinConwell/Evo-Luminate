@@ -2,12 +2,16 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModel
 from typing import List, Union
+from .utils import get_device
 
 
 class TextEmbedder:
-    def __init__(self, model_name="intfloat/e5-small-v2"):
+    def __init__(self, model_name="intfloat/e5-small-v2", device=None):
+        if device is None:
+            device = get_device()
+        self.device = device
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModel.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name).to(self.device)
 
     def _average_pool(self, last_hidden_states, attention_mask):
         last_hidden = last_hidden_states.masked_fill(
@@ -45,6 +49,9 @@ class TextEmbedder:
             truncation=True,
             return_tensors="pt",
         )
+        
+        # Move inputs to the appropriate device
+        batch_dict = {k: v.to(self.device) for k, v in batch_dict.items()}
 
         # Generate embeddings
         with torch.no_grad():
@@ -56,7 +63,8 @@ class TextEmbedder:
         # Normalize embeddings
         embeddings = F.normalize(embeddings, p=2, dim=1)
 
-        return embeddings
+        # Return CPU tensor for compatibility
+        return embeddings.cpu()
 
 
 # Example usage

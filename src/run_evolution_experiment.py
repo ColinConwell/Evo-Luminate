@@ -321,6 +321,11 @@ def run_evolution_experiment(
     os.makedirs(output_dir, exist_ok=True)
     np.random.seed(config["random_seed"])
     torch.manual_seed(config["random_seed"])
+    
+    # Get device information for logging
+    from .utils import get_device
+    device = get_device()
+    logging.info(f"Using device: {device}")
 
     config_path = os.path.join(output_dir, "config.json")
     with open(config_path, "w") as f:

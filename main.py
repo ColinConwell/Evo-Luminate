@@ -53,7 +53,7 @@ def parse_arguments():
     parser.add_argument(
         "--artifact_class",
         type=str,
-        default="shader",
+        default="ShaderArtifact",
         help="Class of artifact to evolve",
     )
     parser.add_argument(
@@ -87,12 +87,18 @@ def parse_arguments():
 if __name__ == "__main__":
     # Parse command line arguments
     args = parse_arguments()
-
+    
     # Create a timestamped directory for this run
     output_dir = os.path.join("results", f"{args.artifact_class}_{args.output_name}")
     if os.path.exists(output_dir):
         print(f"Output directory {output_dir} already exists")
         exit(1)
+        
+    # Log PyTorch device (CUDA, MPS, or CPU)
+    import torch
+    from src.utils import get_device
+    device = get_device()
+    print(f"Using PyTorch device: {device}")
 
     # Run the experiment with the parsed arguments
     run_evolution_experiment(
