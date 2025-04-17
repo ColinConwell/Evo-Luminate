@@ -6,7 +6,7 @@ LLuminate is an evolutionary computation framework that evolves artifacts using 
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/lluminate.git
+git clone https://github.com/joel-simon/lluminate.git
 cd lluminate
 
 # Install dependencies
