@@ -31,9 +31,20 @@ To install certain renderers, cd to one of the subdirectories and run npm instal
 
 ```bash
 cd src/render-shaders && npm install
-cd src/render-sdf && npm install 
+cd src/render-sdf && npm install
 cd src/render-p5js && npm install
 ```
+
+#### System Requirements for Renderers
+
+The renderers require some system dependencies.
+On macOS, install them using Homebrew:
+
+```bash
+brew install pkg-config cairo pango libpng jpeg giflib librsvg pixman
+```
+
+Note: Node.js 18.x is required for the renderers to work properly.
 
 ## Usage
 
