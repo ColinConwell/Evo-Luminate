@@ -35,6 +35,12 @@ cd src/render-sdf && npm install
 cd src/render-p5js && npm install
 ```
 
+Or, to install all renderers, run:
+
+```bash
+bash install-renderers.sh
+```
+
 #### System Requirements for Renderers
 
 The renderers require some system dependencies.

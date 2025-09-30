@@ -83,15 +83,11 @@ class Population:
         similarity = torch.mm(norm_emb, norm_emb.t())
         distances = 1 - similarity  # cosine distance
 
-        # Set self-distance to a high value to exclude from nearest neighbor calculation
-        # Use a value that can safely be represented in all precisions
-        max_val = torch.finfo(distances.dtype).max / 2
-        for i in range(distances.shape[0]):
-            distances[i, i] = max_val
+        # Exclude self from nearest neighbor calculation (vectorized)
+        distances.fill_diagonal_(float("inf"))
 
-        # Get k nearest neighbors for each genome
-        sorted_dist, _ = torch.sort(distances, dim=1)
-        k_nearest = sorted_dist[:, :k_neighbors]
+        # Get k nearest neighbors for each genome using topk (more efficient than full sort)
+        k_nearest, _ = torch.topk(distances, k=k_neighbors, dim=1, largest=False)
 
         # Compute novelty as average distance to k nearest neighbors
         novelty_scores = k_nearest.mean(dim=1)

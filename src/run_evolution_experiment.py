@@ -91,11 +91,17 @@ def construct_repair_prompt(
 
 
 def get_embeddings(artifacts: List[Artifact]) -> torch.Tensor:
-    """Compute embeddings for a list of artifacts"""
+    """Compute embeddings for a list of artifacts and return device-resident float32 tensor"""
+    from .utils import get_device
+
+    device = get_device()
     embeddings = []
     for artifact in artifacts:
         embedding = artifact.compute_embedding()
-        embeddings.append(embedding)
+        # Ensure tensor and move to device as float32
+        if not isinstance(embedding, torch.Tensor):
+            embedding = torch.tensor(embedding)
+        embeddings.append(embedding.to(device=device, dtype=torch.float32))
     return torch.stack(embeddings)
 
 
@@ -319,6 +325,8 @@ def run_evolution_experiment(
     """Run an evolutionary experiment to generate diverse artifacts."""
     # Setup experiment
     os.makedirs(output_dir, exist_ok=True)
+    import random as _py_random
+    _py_random.seed(config["random_seed"])
     np.random.seed(config["random_seed"])
     torch.manual_seed(config["random_seed"])
     

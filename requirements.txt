@@ -13,3 +13,4 @@ aisuite[openai]
 docstring_parser
 transformers
 pyyaml
+pytest
