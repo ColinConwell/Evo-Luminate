@@ -6,7 +6,7 @@ import torch
 from typing import List, Dict, Any, Optional, Union
 
 from src.shaderToImage import shader_to_image
-from src.models import llm_client, image_embedder
+from src.models import get_llm_client, get_image_embedder
 from src.utils import extractCode
 from src.artifacts.Artifact import Artifact
 
@@ -40,7 +40,7 @@ class ShaderArtifact(Artifact):
         artifact = cls()
         artifact.prompt = prompt
 
-        response = llm_client.chat.completions.create(
+        response = get_llm_client().chat.completions.create(
             model=defaultModel,
             max_completion_tokens=20000,
             reasoning_effort=kwargs.get("reasoning_effort", "low"),
@@ -104,7 +104,7 @@ class ShaderArtifact(Artifact):
         frame_embeddings = []
         for frame_path in self.phenome:
             if os.path.exists(frame_path):
-                frame_emb = image_embedder.embedImage(frame_path)
+                frame_emb = get_image_embedder().embedImage(frame_path)
                 frame_embeddings.append(frame_emb)
             else:
                 logging.warning(f"Frame path not found: {frame_path}")

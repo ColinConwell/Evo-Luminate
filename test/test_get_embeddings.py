@@ -18,7 +18,8 @@ def test_get_embeddings_device_float32():
     emb = get_embeddings(artifacts)
     assert isinstance(emb, torch.Tensor)
     assert emb.dtype == torch.float32
-    assert emb.device == get_device()
+    # Some backends may return mps:0 vs mps; compare type only
+    assert emb.device.type == get_device().type
     assert emb.shape == (2, 3)
 
 

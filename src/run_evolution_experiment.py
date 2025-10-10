@@ -10,8 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import traceback
 
 from .population import Population
-from .artifacts import Artifact, get_artifact_class
-from .models import llm_client
+from .artifacts.load_artifacts import get_artifact_class
 from .creative_strategies_manager import CreativityStrategyManager
 from .utils import load_image_path_base64
 
@@ -90,7 +89,7 @@ def construct_repair_prompt(
     return prompt
 
 
-def get_embeddings(artifacts: List[Artifact]) -> torch.Tensor:
+def get_embeddings(artifacts: List) -> torch.Tensor:
     """Compute embeddings for a list of artifacts and return device-resident float32 tensor"""
     from .utils import get_device
 
@@ -106,6 +105,8 @@ def get_embeddings(artifacts: List[Artifact]) -> torch.Tensor:
 
 
 def complete_prompt(prompt: str, model: str = "openai:gpt-4o-mini") -> str:
+    # Lazy import to avoid heavy dependencies during fast test imports
+    from .models import llm_client
     return (
         llm_client.chat.completions.create(
             model=model,
@@ -215,7 +216,7 @@ def create_initial_population(config, artifacts_dir, ArtifactClass):
     return initial_artifacts
 
 
-def load_artifact_image(artifact: Artifact) -> Optional[str]:
+def load_artifact_image(artifact) -> Optional[str]:
     image_url = (
         random.choice(artifact.phenome)
         if isinstance(artifact.phenome, list)

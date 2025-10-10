@@ -2,8 +2,7 @@ import os
 import numpy as np
 import torch
 
-
-from src.models import llm_client, defaultModel, text_embedder
+from src.models import get_llm_client, defaultModel, get_text_embedder
 from src.artifacts.Artifact import Artifact
 
 
@@ -27,7 +26,7 @@ class GaArtifact(Artifact):
             {"type": "text", "text": f"User prompt: {prompt}"},
         ]
 
-        response = llm_client.chat.completions.create(
+        response = get_llm_client().chat.completions.create(
             model=defaultModel,
             max_completion_tokens=20000,
             reasoning_effort=kwargs.get("reasoning_effort", "low"),
@@ -50,7 +49,7 @@ class GaArtifact(Artifact):
         if self.embedding is not None:
             return self.embedding
 
-        emb = text_embedder.embedText(self.genome)[0]
+        emb = get_text_embedder().embedText(self.genome)[0]
 
         self.embedding = emb
         return self.embedding

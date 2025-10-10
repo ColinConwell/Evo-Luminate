@@ -2,8 +2,6 @@ import os
 import argparse
 from datetime import datetime
 
-from src.run_evolution_experiment import run_evolution_experiment
-
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Run an evolutionary experiment")
@@ -80,6 +78,12 @@ def parse_arguments():
         default=0.3,
         help="Probability of crossover during reproduction",
     )
+    parser.add_argument(
+        "--force-cpu",
+        action="store_true",
+        default=False,
+        help="Force CPU device (workaround for platform-specific issues)",
+    )
 
     return parser.parse_args()
 
@@ -87,18 +91,36 @@ def parse_arguments():
 if __name__ == "__main__":
     # Parse command line arguments
     args = parse_arguments()
-    
+
     # Create a timestamped directory for this run
     output_dir = os.path.join("results", f"{args.artifact_class}_{args.output_name}")
     if os.path.exists(output_dir):
         print(f"Output directory {output_dir} already exists")
         exit(1)
-        
+
+    # Set conservative thread env to avoid native mutex issues on some macOS setups
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+    # Allow CPU fallback for unsupported MPS ops to avoid native mutex issues
+    os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+    # Workaround for some macOS + Objective-C frameworks during fork
+    os.environ.setdefault("OBJC_DISABLE_INITIALIZE_FORK_SAFETY", "YES")
+    # Ensure safer multiprocessing behavior
+    try:
+        import multiprocessing as mp
+        mp.set_start_method("spawn", force=True)
+    except Exception:
+        pass
+
     # Log PyTorch device (CUDA, MPS, or CPU)
-    import torch
     from src.utils import get_device
-    device = get_device()
+
+    device = get_device(cpu_only=args.force_cpu)
     print(f"Using PyTorch device: {device}")
+
+    # Lazily import the heavy experiment after environment setup
+    from src.run_evolution_experiment import run_evolution_experiment
 
     # Run the experiment with the parsed arguments
     run_evolution_experiment(

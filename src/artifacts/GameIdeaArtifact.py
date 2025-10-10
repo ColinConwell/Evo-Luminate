@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 
-from src.models import text_embedder, llm_client, defaultModel
+from src.models import get_text_embedder, get_llm_client, defaultModel
 from src.artifacts.Artifact import Artifact
 
 
@@ -39,7 +39,7 @@ class GameIdeaArtifact(Artifact):
         artifact = cls()
         artifact.prompt = prompt
 
-        response = llm_client.chat.completions.create(
+        response = get_llm_client().chat.completions.create(
             model=defaultModel,
             max_completion_tokens=20000,
             reasoning_effort=kwargs.get("reasoning_effort", "low"),
@@ -68,7 +68,7 @@ class GameIdeaArtifact(Artifact):
         if self.embedding is not None:
             return self.embedding
 
-        self.embedding = text_embedder.embedText(self.genome)[0]
+        self.embedding = get_text_embedder().embedText(self.genome)[0]
         return self.embedding
 
     def post_process(self, output_dir: str, **kwargs):
@@ -87,7 +87,7 @@ class GameIdeaArtifact(Artifact):
         Return ONLY the complete HTML file with embedded p5.js library and all game code.
         """
 
-        response = llm_client.chat.completions.create(
+        response = get_llm_client().chat.completions.create(
             model=defaultModel,
             # model="anthropic:claude-4.7",
             max_completion_tokens=20000,
@@ -103,7 +103,7 @@ class GameIdeaArtifact(Artifact):
 
         html_game = response.choices[0].message.content.strip()
 
-        response = llm_client.chat.completions.create(
+        response = get_llm_client().chat.completions.create(
             model="openai:gpt-4o-mini",
             messages=[
                 {

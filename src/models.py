@@ -1,26 +1,43 @@
-import aisuite as ai
-from .text_embedding import TextEmbedder
-from .image_embedding import ImageEmbedder
-import asyncio
-from PIL import Image
-import requests
-from io import BytesIO
+import threading
+from typing import Optional
 
-# Global LLM client
-llm_client = ai.Client()
+# Lazy singletons to avoid heavy init at import-time (prevents mutex issues on macOS)
+_lock = threading.Lock()
+_llm_client = None
+_text_embedder = None
+_image_embedder = None
 
-# Global embedders
-text_embedder = TextEmbedder()
-image_embedder = ImageEmbedder()
-
-# defaultModel = "openai:o3-mini"
-# defaultModel = "openai:gpt-4o"
 defaultModel = "openai:o1"
 
-# defaultModel = "anthropic:claude-4.7"
+def get_llm_client():
+    global _llm_client
+    if _llm_client is None:
+        with _lock:
+            if _llm_client is None:
+                import aisuite as ai
+                _llm_client = ai.Client()
+    return _llm_client
+
+def get_text_embedder():
+    global _text_embedder
+    if _text_embedder is None:
+        with _lock:
+            if _text_embedder is None:
+                from .text_embedding import TextEmbedder
+                _text_embedder = TextEmbedder()
+    return _text_embedder
+
+def get_image_embedder():
+    global _image_embedder
+    if _image_embedder is None:
+        with _lock:
+            if _image_embedder is None:
+                from .image_embedding import ImageEmbedder
+                _image_embedder = ImageEmbedder()
+    return _image_embedder
 
 
-def make_image(prompt, seed=1, aspect_ratio="1:1", num_images=1) -> Image:
+def make_image(prompt, seed=1, aspect_ratio="1:1", num_images=1):
     import replicate
 
     output = replicate.run(
@@ -44,6 +61,8 @@ def make_image(prompt, seed=1, aspect_ratio="1:1", num_images=1) -> Image:
     response = requests.get(output[0])
 
     # Create and return a PIL Image object
+    from PIL import Image
+    from io import BytesIO
     img = Image.open(BytesIO(response.content))
     return img
 

@@ -17,7 +17,7 @@ from .sdf_code import (
     sdfLibrary,
     sdfLibraryHeaders,
 )
-from src.models import llm_client, defaultModel, image_embedder
+from src.models import get_llm_client, defaultModel, get_image_embedder
 
 
 # - Use combinations of primitive SDFs (sphere, box, torus, etc.)
@@ -27,7 +27,7 @@ from src.models import llm_client, defaultModel, image_embedder
 # - Consider performance - avoid excessive operations or recursion
 
 
-class SdfArtifact(Artifact):
+class SDFArtifact(Artifact):
     name = "sdf"
     systemPrompt = """
     You are an expert in creating 3D objects using WebGL 1.0 and signed distance functions (SDFs).
@@ -128,7 +128,7 @@ class SdfArtifact(Artifact):
         if image_url:
             userContent.append({"type": "image_url", "image_url": {"url": image_url}})
 
-        response = llm_client.chat.completions.create(
+        response = get_llm_client().chat.completions.create(
             model=defaultModel,
             max_completion_tokens=20000,
             reasoning_effort=kwargs.get("reasoning_effort", "low"),
@@ -170,7 +170,7 @@ class SdfArtifact(Artifact):
         frame_embeddings = []
         for frame_path in self.phenome:
             if os.path.exists(frame_path):
-                frame_emb = image_embedder.embedImage(frame_path)
+                frame_emb = get_image_embedder().embedImage(frame_path)
                 frame_embeddings.append(frame_emb)
             else:
                 logging.warning(f"Frame path not found: {frame_path}")

@@ -8,7 +8,7 @@ echo "Installing renderers (using Node 18 for each install)..."
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
 run_with_node18() {
-  # Run a single command using Node 18 without changing your global Node
+  # Run a single command using Node 18
   if have_cmd volta; then
     # Volta can run a one-off command with a specific Node
     volta run --node 18 "$@"

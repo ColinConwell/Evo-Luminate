@@ -1,3 +1,4 @@
+import os
 import re
 import yaml
 from typing import Dict, Optional
@@ -130,15 +131,16 @@ def loadCodeBlocks(filepath: str) -> Dict[str, str]:
         return yaml.safe_load(f)
 
 
-def get_device():
+def get_device(cpu_only: bool = False):
     """Get the best available device for PyTorch (CUDA, MPS, or CPU)
-    
-    Returns:
-        torch.device: The best available device for Apple Silicon, NVIDIA GPUs, or CPU fallback
+
+    Honors environment override EVL_FORCE_CPU=1 to force CPU.
     """
+    if cpu_only or os.environ.get("FORCE_CPU") == "1":
+        return torch.device("cpu")
     if torch.cuda.is_available():
         return torch.device("cuda")
     elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return torch.device("mps")
-    else:
+    else: # default to cpu
         return torch.device("cpu")
