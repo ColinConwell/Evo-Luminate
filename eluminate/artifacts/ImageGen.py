@@ -5,8 +5,8 @@ from enum import Enum
 import torch
 from typing import Optional
 
-from src.models import llm_client, image_embedder, make_image
-from src.artifacts.Artifact import Artifact
+from eluminate.models import llm_client, image_embedder, make_image
+from eluminate.artifacts.Artifact import Artifact
 
 defaultModel = "openai:o3-mini"
 

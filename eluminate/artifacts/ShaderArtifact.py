@@ -5,10 +5,10 @@ from enum import Enum
 import torch
 from typing import List, Dict, Any, Optional, Union
 
-from src.shaderToImage import shader_to_image
-from src.models import get_llm_client, get_image_embedder
-from src.utils import extractCode
-from src.artifacts.Artifact import Artifact
+from eluminate.shaderToImage import shader_to_image
+from eluminate.models import get_llm_client, get_image_embedder
+from eluminate.utils import extractCode
+from eluminate.artifacts.Artifact import Artifact
 
 defaultModel = "openai:o3-mini"
 

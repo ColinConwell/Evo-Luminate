@@ -5,10 +5,10 @@ import torch
 import logging
 from typing import List, Dict, Any, Optional, Union
 
-from src.utils import extractBlocks, saveCodeBlocks, loadCodeBlocks
+from eluminate.utils import extractBlocks, saveCodeBlocks, loadCodeBlocks
 
-from src.artifacts.Artifact import Artifact
-from src.artifacts.ShaderArtifact import ShaderArtifact
+from eluminate.artifacts.Artifact import Artifact
+from eluminate.artifacts.ShaderArtifact import ShaderArtifact
 from ..shaderToImage import shader_to_image
 from .sdf_code import (
     shaderTemplate,
@@ -17,7 +17,7 @@ from .sdf_code import (
     sdfLibrary,
     sdfLibraryHeaders,
 )
-from src.models import get_llm_client, defaultModel, get_image_embedder
+from eluminate.models import get_llm_client, defaultModel, get_image_embedder
 
 
 # - Use combinations of primitive SDFs (sphere, box, torus, etc.)

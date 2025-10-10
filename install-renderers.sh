@@ -42,8 +42,8 @@ install_one() {
   popd >/dev/null
 }
 
-install_one "src/render-shaders" "render-shaders"
-install_one "src/render-sdf" "render-sdf"
-install_one "src/render-p5js" "render-p5js"
+install_one "eluminate/render-shaders" "render-shaders"
+install_one "eluminate/render-sdf" "render-sdf"
+install_one "eluminate/render-p5js" "render-p5js"
 
 echo "All renderer installs complete."

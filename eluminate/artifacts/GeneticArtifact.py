@@ -2,8 +2,8 @@ import os
 import numpy as np
 import torch
 
-from src.models import get_llm_client, defaultModel, get_text_embedder
-from src.artifacts.Artifact import Artifact
+from eluminate.models import get_llm_client, defaultModel, get_text_embedder
+from eluminate.artifacts.Artifact import Artifact
 
 
 class GaArtifact(Artifact):

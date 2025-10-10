@@ -17,8 +17,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from src.utils import get_device
-from src.image_embedding import ImageEmbedder
+from eluminate.utils import get_device
+from eluminate.image_embedding import ImageEmbedder
 
 
 # ------------------------- Rendering (p5.js via Node) -------------------------
@@ -64,7 +64,7 @@ def _fallback_render_clock(image_path: str, params: Dict[str, Any], width: int, 
 
 def render_p5_to_image(sketch_code: str, image_path: str, width: int = 512, height: int = 512, frames: int = 1, fmt: str = "png", params: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """
-    Render a p5.js sketch to an image using the Node renderer at src/render-p5js/render-p5.js
+    Render a p5.js sketch to an image using the Node renderer at eluminate/render-p5js/render-p5.js
     """
     spec = {
         "width": width,
@@ -77,7 +77,7 @@ def render_p5_to_image(sketch_code: str, image_path: str, width: int = 512, heig
     try:
         # First try default node
         subprocess.run(
-            ["node", "src/render-p5js/render-p5.js", image_path],
+            ["node", "eluminate/render-p5js/render-p5.js", image_path],
             input=json.dumps(spec),
             text=True,
             check=True,
@@ -87,7 +87,7 @@ def render_p5_to_image(sketch_code: str, image_path: str, width: int = 512, heig
         # If Volta is available, try forcing Node 18
         try:
             subprocess.run(
-                ["volta", "run", "--node", "18", "node", "src/render-p5js/render-p5.js", image_path],
+                ["volta", "run", "--node", "18", "node", "eluminate/render-p5js/render-p5.js", image_path],
                 input=json.dumps(spec),
                 text=True,
                 check=True,

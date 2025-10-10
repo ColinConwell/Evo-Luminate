@@ -2,8 +2,8 @@
 
 import os, math, pytest
 
-from src.shaderToImage import shader_to_image
-from src.artifacts.sdf_code import (
+from eluminate.shaderToImage import shader_to_image
+from eluminate.artifacts.sdf_code import (
     vertexShader,
     shaderTemplate,
     sdfLibrary,

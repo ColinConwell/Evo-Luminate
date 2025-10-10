@@ -14,7 +14,7 @@ from .artifacts.load_artifacts import get_artifact_class
 from .creative_strategies_manager import CreativityStrategyManager
 from .utils import load_image_path_base64
 
-manager = CreativityStrategyManager("src/creativity_strategies.json")
+manager = CreativityStrategyManager("eluminate/creativity_strategies.json")
 
 
 def artifacts_to_string(artifacts):

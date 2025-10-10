@@ -20,7 +20,7 @@ def shader_to_image(fragment_code, vertex_code, image_path, width, height, unifo
     input_json = json.dumps(spec)
     try:
         subprocess.run(
-            ["node", "src/render-shaders/render-shaders.js", image_path],
+            ["node", "eluminate/render-shaders/render-shaders.js", image_path],
             input=input_json,
             text=True,
             check=True,

@@ -114,13 +114,13 @@ if __name__ == "__main__":
         pass
 
     # Log PyTorch device (CUDA, MPS, or CPU)
-    from src.utils import get_device
+    from eluminate.utils import get_device
 
     device = get_device(cpu_only=args.force_cpu)
     print(f"Using PyTorch device: {device}")
 
     # Lazily import the heavy experiment after environment setup
-    from src.run_evolution_experiment import run_evolution_experiment
+    from eluminate.run_evolution_experiment import run_evolution_experiment
 
     # Run the experiment with the parsed arguments
     run_evolution_experiment(

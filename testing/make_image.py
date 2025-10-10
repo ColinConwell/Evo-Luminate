@@ -2,10 +2,10 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
-# Add the parent directory to the Python path to access src
+# Add the parent directory to the Python path to access eluminate
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.models import make_image
+from eluminate.models import make_image
 
 
 def test_make_image():

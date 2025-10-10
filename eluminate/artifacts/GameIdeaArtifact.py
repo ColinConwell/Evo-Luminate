@@ -4,8 +4,8 @@ import numpy as np
 import torch
 
 
-from src.models import get_text_embedder, get_llm_client, defaultModel
-from src.artifacts.Artifact import Artifact
+from eluminate.models import get_text_embedder, get_llm_client, defaultModel
+from eluminate.artifacts.Artifact import Artifact
 
 
 class GameIdeaArtifact(Artifact):
@@ -74,7 +74,7 @@ class GameIdeaArtifact(Artifact):
     def post_process(self, output_dir: str, **kwargs):
         rules = """
         - Must be a p5.js game in a single html file
-        - Include: <script src="https://cdn.jsdelivr.net/npm/p5@1.4.2/lib/p5.js"></script>
+        - Include: <script eluminate="https://cdn.jsdelivr.net/npm/p5@1.4.2/lib/p5.js"></script>
         - Must be playable in a 512x512 iframe
         """
 

@@ -15,7 +15,7 @@ def test_select_by_novelty_basic():
         dtype=torch.float32,
     )
 
-    from src.population import Population
+    from eluminate.population import Population
 
     pop = Population()
     # Simulate artifacts list length for the selection logic edge cases

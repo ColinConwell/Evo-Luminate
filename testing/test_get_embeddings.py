@@ -10,8 +10,8 @@ def test_get_embeddings_device_float32():
         def compute_embedding(self):
             return self.vec
 
-    from src.run_evolution_experiment import get_embeddings
-    from src.utils import get_device
+    from eluminate.run_evolution_experiment import get_embeddings
+    from eluminate.utils import get_device
 
     artifacts = [DummyArtifact([1, 0, 0]), DummyArtifact([0, 1, 0])]
 

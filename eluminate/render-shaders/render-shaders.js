@@ -65,14 +65,14 @@ function renderShader(spec, outPath) {
     // Create a PNG using pngjs. Note: flip vertically.
     const png = new PNG({ width, height });
     for (let y = 0; y < height; y++) {
-      const srcY = height - 1 - y; // flip y coordinate
+      const eluminateY = height - 1 - y; // flip y coordinate
       for (let x = 0; x < width; x++) {
-        const srcIdx = (srcY * width + x) * 4;
+        const eluminateIdx = (eluminateY * width + x) * 4;
         const dstIdx = (y * width + x) * 4;
-        png.data[dstIdx] = pixels[srcIdx]; // red
-        png.data[dstIdx + 1] = pixels[srcIdx + 1]; // green
-        png.data[dstIdx + 2] = pixels[srcIdx + 2]; // blue
-        png.data[dstIdx + 3] = pixels[srcIdx + 3]; // alpha
+        png.data[dstIdx] = pixels[eluminateIdx]; // red
+        png.data[dstIdx + 1] = pixels[eluminateIdx + 1]; // green
+        png.data[dstIdx + 2] = pixels[eluminateIdx + 2]; // blue
+        png.data[dstIdx + 3] = pixels[eluminateIdx + 3]; // alpha
       }
     }
 

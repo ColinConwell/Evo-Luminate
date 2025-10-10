@@ -30,9 +30,9 @@ Note: On Apple Silicon, Metal Performance Shaders provide significant speedups f
 To install certain renderers, cd to one of the subdirectories and run npm install:
 
 ```bash
-cd src/render-shaders && npm install
-cd src/render-sdf && npm install
-cd src/render-p5js && npm install
+cd eluminate/render-shaders && npm install
+cd eluminate/render-sdf && npm install
+cd eluminate/render-p5js && npm install
 ```
 
 Or, to install all renderers, run:
@@ -92,7 +92,7 @@ python main.py --prompt "Create a sunset shader with mountain silhouettes" --num
 ```
 lluminate/
 ├── main.py                 # Main entry point for running experiments
-├── src/
+├── eluminate/
 │   ├── run_evolution_experiment.py  # Implementation of the evolution experiment
 │   └── ...                 # Other source files
 ├── results/                # Generated artifacts and experiment results

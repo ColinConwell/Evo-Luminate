@@ -27,12 +27,12 @@ class DummyArtifact:
 
 def test_run_evolution_small(tmp_path, monkeypatch):
     # Monkeypatch artifact class to dummy to avoid LLM and rendering
-    from src import run_evolution_experiment as ree
+    from eluminate import run_evolution_experiment as ree
 
     def fake_get_artifact_class(config):
         return DummyArtifact
 
-    monkeypatch.setattr("src.run_evolution_experiment.get_artifact_class", fake_get_artifact_class)
+    monkeypatch.setattr("eluminate.run_evolution_experiment.get_artifact_class", fake_get_artifact_class)
 
     config = {
         "random_seed": 42,

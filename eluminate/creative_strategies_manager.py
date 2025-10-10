@@ -250,7 +250,7 @@ class CreativityStrategyManager:
 
 # Example usage
 if __name__ == "__main__":
-    manager = CreativityStrategyManager("src/creativity_strategies.json")
+    manager = CreativityStrategyManager("eluminate/creativity_strategies.json")
 
     # Get a specific strategy
     # replacement = manager.get_strategy_by_name("Replacement Template")

@@ -5,7 +5,7 @@ import argparse
 from datetime import datetime
 from typing import Dict, Any
 
-from src.run_evolution_experiment import run_evolution_experiment
+from eluminate.run_evolution_experiment import run_evolution_experiment
 
 # Configure logging
 logging.basicConfig(
