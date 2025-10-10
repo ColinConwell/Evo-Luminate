@@ -1,9 +1,14 @@
 import os
+import sys
 import json
 import logging
 import argparse
 from datetime import datetime
 from typing import Dict, Any
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from eluminate.run_evolution_experiment import run_evolution_experiment
 

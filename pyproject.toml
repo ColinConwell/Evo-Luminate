@@ -1,0 +1,119 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evo-luminate"
+version = "0.1.0"
+description = "Evolutionary computation framework that evolves artifacts using generative AI"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "Apache-2.0"}
+authors = [
+    {email = "developer@dev.com"}
+]
+keywords = ["evolutionary-computation", "generative-ai", "novelty-search"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+
+dependencies = [
+    "numpy",
+    "llvmlite>=0.39.0",
+    "numba>=0.57.0",
+    "pillow",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "ftfy",
+    "regex",
+    "tqdm",
+    "umap-learn>=0.5.3",
+    "aisuite[openai]",
+    "docstring_parser",
+    "transformers",
+    "pyyaml",
+    "clip @ git+https://github.com/openai/CLIP.git",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "black>=22.0",
+    "ruff>=0.0.200",
+    "ipython",
+    "jupyter",
+]
+
+analysis = [
+    "matplotlib>=3.5.0",
+    "scipy>=1.7.0",
+    "scikit-learn>=1.0.0",
+    "pandas",
+]
+
+all = [
+    "evo-luminate[dev,analysis]"
+]
+
+[project.scripts]
+evo-luminate = "eluminate.run_evolution_experiment:main"
+
+[tool.setuptools]
+packages = ["eluminate", "eluminate.artifacts"]
+
+[tool.pytest.ini_options]
+testpaths = ["testing"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]  # unused imports in __init__.py
+
+[tool.ruff.isort]
+known-first-party = ["eluminate"]
+

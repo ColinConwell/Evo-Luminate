@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import time
 import math
@@ -8,6 +9,7 @@ import argparse
 import subprocess
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Tuple
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -16,6 +18,9 @@ import torch
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from eluminate.utils import get_device
 from eluminate.image_embedding import ImageEmbedder

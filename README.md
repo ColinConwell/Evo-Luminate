@@ -1,6 +1,6 @@
-# LLuminate
+# Evo-Luminate
 
-LLuminate is an evolutionary computation framework that evolves artifacts using generative AI. It enables running experiments with various parameters to guide the evolutionary process.
+Evo-Luminate is an evolutionary computation framework that evolves artifacts using generative AI. It enables running experiments with various parameters to guide the evolutionary process.
 
 ## Installation
 
@@ -9,8 +9,11 @@ LLuminate is an evolutionary computation framework that evolves artifacts using 
 git clone https://github.com/joel-simon/lluminate.git
 cd lluminate
 
-# Install dependencies
-pip install -r requirements.txt
+# Install package with dependencies
+pip install -e .
+
+# Or install with optional dependencies
+pip install -e ".[dev,analysis]"
 ```
 
 ### macOS Apple Silicon Support
@@ -27,18 +30,16 @@ Note: On Apple Silicon, Metal Performance Shaders provide significant speedups f
 
 ### Renderers Installation
 
-To install certain renderers, cd to one of the subdirectories and run npm install:
+Install all renderers using the setup script:
 
 ```bash
-cd eluminate/render-shaders && npm install
-cd eluminate/render-sdf && npm install
-cd eluminate/render-p5js && npm install
+bash scripts/setup/install-renderers.sh
 ```
 
-Or, to install all renderers, run:
+Or with just:
 
 ```bash
-bash install-renderers.sh
+just setup
 ```
 
 #### System Requirements for Renderers
@@ -54,10 +55,16 @@ Note: Node.js 18.x is required for the renderers to work properly.
 
 ## Usage
 
-Run an evolutionary experiment using the `main.py` script:
+Run an evolutionary experiment using the main script:
 
 ```bash
-python main.py --prompt "Your creative prompt here" --artifact_class shader --num_generations 20
+python scripts/main_experiment.py --prompt "Your creative prompt here" --artifact_class shader --num_generations 20
+```
+
+Or with just:
+
+```bash
+just experiment --prompt "Your creative prompt here" --artifact_class shader --num_generations 20
 ```
 
 ### Command Line Arguments
@@ -80,23 +87,41 @@ python main.py --prompt "Your creative prompt here" --artifact_class shader --nu
 | `--no_summary`              | Disable summary usage                        | False             |
 | `--crossover_rate`          | Probability of crossover during reproduction | 0.3               |
 
-## Example
+## Examples
 
 ```bash
 # Run an evolution experiment with a custom prompt and 30 generations
-python main.py --prompt "Create a sunset shader with mountain silhouettes" --num_generations 30 --reasoning_effort high
+just experiment --prompt "Create a sunset shader with mountain silhouettes" --num_generations 30 --reasoning_effort high
+
+# Run an ablation study
+just ablation --output_dir results --seeds 42,43,44
+
+# Plot novelty metrics for a results directory
+just plot-novelty results/ShaderArtifact_20251010_014010
+
+# Analyze ablation study results
+just analyze results/ablation_study
 ```
 
 ## Project Structure
 
 ```
-lluminate/
-├── main.py                 # Main entry point for running experiments
-├── eluminate/
-│   ├── run_evolution_experiment.py  # Implementation of the evolution experiment
-│   └── ...                 # Other source files
+evo-luminate/
+├── eluminate/              # Core library
+│   ├── artifacts/          # Artifact implementations
+│   ├── analysis_utils.py   # Analysis utilities
+│   ├── run_evolution_experiment.py
+│   └── ...
+├── scripts/                # Executable scripts
+│   ├── main_experiment.py  # Main entry point
+│   ├── run_experiments.py  # Ablation studies
+│   ├── plot_results.py     # Visualization tools
+│   ├── analyze_results.py  # Analysis tools
+│   └── setup/              # Setup scripts
+├── testing/                # Test suite
 ├── results/                # Generated artifacts and experiment results
-└── ...
+├── justfile                # Task runner commands
+└── pyproject.toml          # Package configuration
 ```
 
 ## Output

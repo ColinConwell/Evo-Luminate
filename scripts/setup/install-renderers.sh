@@ -1,7 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-THIS_DIR=$(cd "$(dirname "$0")" && pwd)
+# Get the repo root (two directories up from this script)
+THIS_DIR=$(cd "$(dirname "$0")/../.." && pwd)
 
 echo "Installing renderers (using Node 18 for each install)..."
 
